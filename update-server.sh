@@ -152,6 +152,16 @@ if [ -f "${SCRIPT_DIR}/docs/database/add_notifications_and_user_search.sql" ]; t
     docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/add_notifications_and_user_search.sql" > /dev/null 2>&1 || true
 fi
 
+if [ -f "${SCRIPT_DIR}/docs/database/confirm_active_project_solicitudes.sql" ]; then
+    echo -e "   ${CYAN}🗄️  Confirmando solicitudes de anteproyectos activos en PostgreSQL...${NC}"
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/confirm_active_project_solicitudes.sql" > /dev/null 2>&1 || true
+fi
+
+if [ -f "${SCRIPT_DIR}/docs/database/reclassify_carta_aceptacion.sql" ]; then
+    echo -e "   ${CYAN}🗄️  Reclasificando cartas de aceptación en PostgreSQL...${NC}"
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/reclassify_carta_aceptacion.sql" > /dev/null 2>&1 || true
+fi
+
 # Recrear backend con la nueva imagen preservando volúmenes de uploads
 echo -e "   ${CYAN}🔄 Actualizando contenedor de Backend API...${NC}"
 docker compose up -d --no-deps backend

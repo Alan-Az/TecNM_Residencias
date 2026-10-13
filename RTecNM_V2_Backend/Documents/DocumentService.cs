@@ -214,8 +214,7 @@ public class DocumentService : IDocumentService
             throw new ArgumentException($"Estado no válido: '{dto.Status}'.");
         }
 
-        if (document.DocumentType.Equals(DocumentType.Avance1, StringComparison.OrdinalIgnoreCase) ||
-            document.DocumentType.Equals(DocumentType.Avance2, StringComparison.OrdinalIgnoreCase))
+        if (DocumentType.IsAdvanceType(document.DocumentType))
         {
             var isAdvisor = _currentUser.IsInRole(UserRole.Advisor);
             var isAdmin = _currentUser.IsInRole(UserRole.Admin);
@@ -356,7 +355,7 @@ private static DocumentResponseDto MapToDto(Document doc)
             };
         }
 
-        private async Task CheckFormatUploadOrderAsync(long projectId, string documentType)
+        public async Task CheckFormatUploadOrderAsync(long projectId, string documentType)
         {
             var project = await _projectRepository.GetByIdAsync(projectId);
             if (project == null) return;
@@ -426,8 +425,23 @@ private static DocumentResponseDto MapToDto(Document doc)
                 }
             }
 
-            // Regla: El alumno debe haber completado al menos una sesión de asesoría antes de entregar formatos subsecuentes
-            if (docTypeLower == DocumentType.Formato29V2 || docTypeLower == DocumentType.Formato30 || docTypeLower == DocumentType.Avance2)
+            // Regla: Validación secuencial para avances dinámicos (avance_N requiere avance_{N-1})
+            if (DocumentType.IsAdvanceType(docTypeLower))
+            {
+                var advNum = DocumentType.GetAdvanceNumber(docTypeLower)!.Value;
+                if (advNum > 1)
+                {
+                    var prevType = $"avance_{advNum - 1}";
+                    bool hasPrev = existingDocs.Any(d => d.DocumentType.Equals(prevType, StringComparison.OrdinalIgnoreCase) && d.IsActive && d.Status != DocumentStatus.Rejected);
+                    if (!hasPrev)
+                    {
+                        throw new InvalidOperationException($"No se puede entregar el Avance #{advNum} sin haber entregado previamente el Avance #{advNum - 1}.");
+                    }
+                }
+            }
+
+            // Regla: El alumno debe haber completado al menos una sesión de asesoría antes de entregar formatos subsecuentes (excepto proyectos de acreditación)
+            if (!isAccreditation && (docTypeLower == DocumentType.Formato29V2 || docTypeLower == DocumentType.Formato30 || (DocumentType.IsAdvanceType(docTypeLower) && DocumentType.GetAdvanceNumber(docTypeLower) >= 2)))
             {
                 var sessionCount = await _context.AdvisorySessions
                     .CountAsync(s => s.ProjectId == projectId && s.IsActive);
@@ -437,9 +451,20 @@ private static DocumentResponseDto MapToDto(Document doc)
                 }
             }
 
-            // Regla: Proyecto Final solo se puede subir tras contar con Formato 29, 29v2, 30 y Carta de Terminación aprobados
-            if (docTypeLower == DocumentType.ProyectoFinal)
+            // Regla: Proyecto Final solo se puede subir tras contar con al menos 2 avances, Formato 29, 29v2, 30 y Carta de Terminación aprobados
+            if (docTypeLower == DocumentType.ProyectoFinal && !isAccreditation)
             {
+                var activeAdvancesCount = existingDocs
+                    .Where(d => DocumentType.IsAdvanceType(d.DocumentType) && d.IsActive && d.Status != DocumentStatus.Rejected)
+                    .Select(d => d.DocumentType.ToLowerInvariant())
+                    .Distinct()
+                    .Count();
+
+                if (activeAdvancesCount < 2)
+                {
+                    throw new InvalidOperationException("Para entregar el Proyecto Final es obligatorio haber entregado como mínimo 2 avances de residencia.");
+                }
+
                 var f29v2 = existingDocs.FirstOrDefault(d => d.DocumentType.Equals(DocumentType.Formato29V2, StringComparison.OrdinalIgnoreCase));
                 var f30 = existingDocs.FirstOrDefault(d => d.DocumentType.Equals(DocumentType.Formato30, StringComparison.OrdinalIgnoreCase));
                 var cTerminacion = existingDocs.FirstOrDefault(d => d.DocumentType.Equals(DocumentType.CartaTerminacion, StringComparison.OrdinalIgnoreCase));

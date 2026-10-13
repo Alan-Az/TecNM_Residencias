@@ -73,8 +73,7 @@ public class DocumentsController : ControllerBase
             if (!projectResult.Data.CanUploadDocuments && !isStaff && !isPreApprovalDoc && !isAccreditation)
                 return StatusCode(400, new { message = "El anteproyecto aún no ha sido aprobado. En esta etapa solo se requiere cargar la Carta de Aceptación / Aprobación de la empresa." });
 
-            var isSubsequentResidencyFormat = dto.DocumentType.Equals(DocumentType.Avance1, StringComparison.OrdinalIgnoreCase)
-                || dto.DocumentType.Equals(DocumentType.Avance2, StringComparison.OrdinalIgnoreCase)
+            var isSubsequentResidencyFormat = DocumentType.IsAdvanceType(dto.DocumentType)
                 || dto.DocumentType.Equals(DocumentType.Formato29, StringComparison.OrdinalIgnoreCase)
                 || dto.DocumentType.Equals(DocumentType.Formato29V2, StringComparison.OrdinalIgnoreCase)
                 || dto.DocumentType.Equals(DocumentType.Formato30, StringComparison.OrdinalIgnoreCase)

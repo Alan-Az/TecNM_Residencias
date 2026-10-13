@@ -60,8 +60,20 @@ public class EvaluationService : IEvaluationService
         if (_currentUser.IsInRole(UserRole.Advisor) && !IsStaff())
         {
             var advisorId = await GetSessionAdvisorIdAsync();
-            if (!advisorId.HasValue || project.AdvisorId != advisorId.Value)
+            if (!advisorId.HasValue)
+                return Result<EvaluationResponseDto>.Failure("No se encontró un perfil de asesor asociado a tu cuenta.", 403);
+
+            bool isAssigned = project.AdvisorId == advisorId.Value ||
+                              (project.Student != null && project.Student.AdvisorId == advisorId.Value);
+
+            if (!isAssigned)
                 return Result<EvaluationResponseDto>.Failure("Solo puedes calificar a tus alumnos asignados.", 403);
+
+            if (!project.AdvisorId.HasValue)
+            {
+                project.AdvisorId = advisorId.Value;
+                await _projectRepository.UpdateAsync(project);
+            }
         }
 
         var normalizedPeriod = dto.EvaluationPeriod.ToLowerInvariant() switch
@@ -150,8 +162,17 @@ public class EvaluationService : IEvaluationService
             if (!sessionAdvisorId.HasValue)
                 return Result<AdvisorySessionResponseDto>.Failure("No se encontró un perfil de asesor asociado a tu cuenta.", 403);
 
-            if (project.AdvisorId != sessionAdvisorId.Value && !_currentUser.IsInRole(UserRole.Admin))
+            bool isAssigned = project.AdvisorId == sessionAdvisorId.Value ||
+                              (project.Student != null && project.Student.AdvisorId == sessionAdvisorId.Value);
+
+            if (!isAssigned && !_currentUser.IsInRole(UserRole.Admin))
                 return Result<AdvisorySessionResponseDto>.Failure("Solo puedes registrar asesorías a tus alumnos asignados.", 403);
+
+            if (!project.AdvisorId.HasValue)
+            {
+                project.AdvisorId = sessionAdvisorId.Value;
+                await _projectRepository.UpdateAsync(project);
+            }
 
             advisorId = sessionAdvisorId.Value;
         }

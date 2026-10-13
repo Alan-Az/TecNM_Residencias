@@ -181,9 +181,11 @@ async function resolveStudentProject() {
     if (res.data && res.data.id) {
       currentProject.value = res.data
       await loadEvaluations()
+      await loadProjectDocuments()
     } else {
       currentProject.value = null
       evaluations.value = []
+      projectDocuments.value = []
     }
   } catch (err) {
     currentProject.value = null
@@ -231,8 +233,79 @@ async function loadInitialProjectForStaff() {
     }
     currentProject.value = null
     evaluations.value = []
+    projectDocuments.value = []
   } finally {
     isLoading.value = false
+  }
+}
+
+const projectDocuments = ref([])
+
+async function loadProjectDocuments() {
+  if (!currentProject.value?.id) {
+    projectDocuments.value = []
+    return
+  }
+  try {
+    const res = await apiClient.get('/v1/documents', {
+      params: { projectId: currentProject.value.id, pageSize: 50 }
+    })
+    const data = res.data
+    projectDocuments.value = data?.items || (Array.isArray(data) ? data : [])
+  } catch (err) {
+    projectDocuments.value = []
+  }
+}
+
+function getDocumentForPeriod(period) {
+  const p = String(period || '').toLowerCase()
+  const docs = projectDocuments.value || []
+  if (p === 'partial_1' || p === 'parcial_1') {
+    return docs.find(d => (d.documentType || '').toLowerCase() === 'avance_1' && d.isActive)
+  }
+  if (p === 'partial_2' || p === 'parcial_2') {
+    return docs.find(d => (d.documentType || '').toLowerCase() === 'avance_2' && d.isActive)
+  }
+  if (p === 'final') {
+    return docs.find(d => (d.documentType || '').toLowerCase() === 'proyecto_final' && d.isActive)
+  }
+  return null
+}
+
+const targetDocumentForCreate = computed(() => getDocumentForPeriod(createForm.value.evaluationPeriod))
+const targetDocumentForEdit = computed(() => getDocumentForPeriod(editForm.value.evaluationPeriod))
+
+async function downloadDocument(doc) {
+  if (!doc?.id) return
+  try {
+    const res = await apiClient.get(`/v1/documents/${doc.id}/download`, {
+      responseType: 'blob'
+    })
+    const url = window.URL.createObjectURL(new Blob([res.data]))
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', doc.fileName || `${doc.documentType || 'documento'}.pdf`)
+    document.body.appendChild(link)
+    link.click()
+    link.remove()
+    window.URL.revokeObjectURL(url)
+  } catch (err) {
+    showAlert('Error al descargar el documento.', 'danger')
+  }
+}
+
+async function viewDocument(doc) {
+  if (!doc?.id) return
+  try {
+    const res = await apiClient.get(`/v1/documents/${doc.id}/download`, {
+      responseType: 'blob'
+    })
+    const fileType = doc.fileName?.toLowerCase().endsWith('.pdf') ? 'application/pdf' : res.data.type
+    const blob = new Blob([res.data], { type: fileType })
+    const url = window.URL.createObjectURL(blob)
+    window.open(url, '_blank')
+  } catch (err) {
+    showAlert('Error al abrir el documento.', 'danger')
   }
 }
 
@@ -242,6 +315,7 @@ async function selectProject(project) {
   pageNumber.value = 1
   errorMessage.value = ''
   await loadEvaluations()
+  await loadProjectDocuments()
 
   // Enriquecer datos de estudiante si faltan
   if (!project.studentName && !project.student_name) {
@@ -665,9 +739,21 @@ onMounted(() => {
                 :key="e.id"
               >
                 <td>
-                  <span class="tecnm-badge tecnm-badge-info">
-                    {{ formatPeriod(e.evaluationPeriod) }}
-                  </span>
+                  <div style="display: flex; flex-direction: column; gap: 0.35rem; align-items: flex-start;">
+                    <span class="tecnm-badge tecnm-badge-info">
+                      {{ formatPeriod(e.evaluationPeriod) }}
+                    </span>
+                    <button
+                      v-if="getDocumentForPeriod(e.evaluationPeriod)"
+                      type="button"
+                      class="tecnm-btn tecnm-btn-link"
+                      style="padding: 0; font-size: 0.75rem; text-decoration: underline; color: var(--tecnm-blue-primary); cursor: pointer; background: none; border: none;"
+                      @click="viewDocument(getDocumentForPeriod(e.evaluationPeriod))"
+                      title="Ver archivo de avance o proyecto correspondiente"
+                    >
+                      Ver Archivo Entregado
+                    </button>
+                  </div>
                 </td>
                 <td><strong>{{ e.score }}</strong> / 100</td>
                 <td>{{ e.studentName || currentProject?.studentName || 'Estudiante' }}</td>
@@ -780,6 +866,54 @@ onMounted(() => {
             </select>
           </div>
 
+          <!-- Documento a Evaluar correspondiente -->
+          <div
+            class="tecnm-card"
+            style="margin-bottom: 1.25rem; padding: 0.75rem 0.9rem; background: #f8fafc; border-left: 4px solid var(--tecnm-blue-primary);"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <strong style="font-size: 0.85rem; color: #1e3a8a;">
+                Documento Entregado por el Alumno:
+              </strong>
+              <span
+                v-if="targetDocumentForCreate"
+                class="tecnm-badge"
+                :class="(targetDocumentForCreate.status === 'approved' || targetDocumentForCreate.status === 1) ? 'tecnm-badge-approved' : 'tecnm-badge-pending'"
+                style="font-size: 0.75rem;"
+              >
+                {{ (targetDocumentForCreate.status === 'approved' || targetDocumentForCreate.status === 1) ? 'Validado' : 'Entregado' }}
+              </span>
+            </div>
+
+            <div v-if="targetDocumentForCreate" style="font-size: 0.825rem; color: #334155;">
+              <div style="margin-bottom: 0.4rem;">
+                <strong>Archivo:</strong> {{ targetDocumentForCreate.fileName || 'Avance de residencia' }}
+                <span style="color: #64748b; margin-left: 0.35rem;">({{ formatTecNMDate(targetDocumentForCreate.uploadedAt) }})</span>
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button
+                  type="button"
+                  class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                  style="font-size: 0.775rem; padding: 0.2rem 0.5rem;"
+                  @click="viewDocument(targetDocumentForCreate)"
+                >
+                  Ver Documento (PDF)
+                </button>
+                <button
+                  type="button"
+                  class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                  style="font-size: 0.775rem; padding: 0.2rem 0.5rem;"
+                  @click="downloadDocument(targetDocumentForCreate)"
+                >
+                  Descargar
+                </button>
+              </div>
+            </div>
+            <div v-else style="font-size: 0.825rem; color: #b91c1c;">
+              <em>El estudiante aún no ha cargado el documento para este período en su expediente digital.</em>
+            </div>
+          </div>
+
           <div class="tecnm-form-group">
             <label for="score" class="tecnm-label">Calificación (0 - 100) *</label>
             <input
@@ -858,6 +992,54 @@ onMounted(() => {
               :value="formatPeriod(editForm.evaluationPeriod)"
               disabled
             />
+          </div>
+
+          <!-- Documento a Evaluar correspondiente -->
+          <div
+            class="tecnm-card"
+            style="margin-bottom: 1.25rem; padding: 0.75rem 0.9rem; background: #f8fafc; border-left: 4px solid var(--tecnm-blue-primary);"
+          >
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+              <strong style="font-size: 0.85rem; color: #1e3a8a;">
+                Documento Entregado por el Alumno:
+              </strong>
+              <span
+                v-if="targetDocumentForEdit"
+                class="tecnm-badge"
+                :class="(targetDocumentForEdit.status === 'approved' || targetDocumentForEdit.status === 1) ? 'tecnm-badge-approved' : 'tecnm-badge-pending'"
+                style="font-size: 0.75rem;"
+              >
+                {{ (targetDocumentForEdit.status === 'approved' || targetDocumentForEdit.status === 1) ? 'Validado' : 'Entregado' }}
+              </span>
+            </div>
+
+            <div v-if="targetDocumentForEdit" style="font-size: 0.825rem; color: #334155;">
+              <div style="margin-bottom: 0.4rem;">
+                <strong>Archivo:</strong> {{ targetDocumentForEdit.fileName || 'Avance de residencia' }}
+                <span style="color: #64748b; margin-left: 0.35rem;">({{ formatTecNMDate(targetDocumentForEdit.uploadedAt) }})</span>
+              </div>
+              <div style="display: flex; gap: 0.5rem;">
+                <button
+                  type="button"
+                  class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                  style="font-size: 0.775rem; padding: 0.2rem 0.5rem;"
+                  @click="viewDocument(targetDocumentForEdit)"
+                >
+                  Ver Documento (PDF)
+                </button>
+                <button
+                  type="button"
+                  class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                  style="font-size: 0.775rem; padding: 0.2rem 0.5rem;"
+                  @click="downloadDocument(targetDocumentForEdit)"
+                >
+                  Descargar
+                </button>
+              </div>
+            </div>
+            <div v-else style="font-size: 0.825rem; color: #b91c1c;">
+              <em>El estudiante no cuenta con documento activo registrado para este período.</em>
+            </div>
           </div>
 
           <div v-if="isStaff" id="editEvaluatorFormGroup" class="tecnm-form-group">

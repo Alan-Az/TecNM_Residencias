@@ -917,12 +917,12 @@ public static class DbSeeder
                 CONCAT(s.first_name, ' ', s.last_name_1) AS student_name,
                 COALESCE(a.full_name, 'Sin Asignar') AS advisor_name,
                 COALESCE(c.name, 'Sin Empresa') AS company_name,
-                p.advisor_id AS advisor_id,
+                COALESCE(p.advisor_id, s.advisor_id) AS advisor_id,
                 s.career_id AS career_id,
                 p.is_active AS is_active
             FROM projects p
             LEFT JOIN students s ON p.student_id = s.id
-            LEFT JOIN advisors a ON p.advisor_id = a.id
+            LEFT JOIN advisors a ON COALESCE(p.advisor_id, s.advisor_id) = a.id
             LEFT JOIN companies c ON p.company_id = c.id
             WHERE p.status::text <> 'draft';",
 

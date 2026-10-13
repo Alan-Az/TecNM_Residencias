@@ -47,6 +47,30 @@ public static class DocumentType
         CartaPresentacion
     };
 
-    public static bool IsValid(string type) => ValidTypes.Contains(type);
+    public static bool IsAdvanceType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return false;
+        var t = type.Trim().ToLowerInvariant();
+        return t.StartsWith("avance_") && int.TryParse(t.Substring(7), out var num) && num >= 1;
+    }
+
+    public static int? GetAdvanceNumber(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return null;
+        var t = type.Trim().ToLowerInvariant();
+        if (t.StartsWith("avance_") && int.TryParse(t.Substring(7), out var num) && num >= 1)
+        {
+            return num;
+        }
+        return null;
+    }
+
+    public static bool IsValid(string type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return false;
+        if (ValidTypes.Contains(type)) return true;
+        return IsAdvanceType(type);
+    }
+
     public static bool IsOmitted(string type) => OmittedTypes.Contains(type);
 }

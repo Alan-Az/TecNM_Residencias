@@ -34,7 +34,7 @@ function canEvaluateThisDoc(doc) {
   if (authStore.isReadOnly) return false
   if (authStore.isAdmin) return true
   const docType = (doc?.documentType || '').toLowerCase()
-  if (docType === 'avance_1' || docType === 'avance_2') {
+  if (docType.startsWith('avance_')) {
     return isAdvisor.value
   }
   return isStaff.value || isAdvisor.value
@@ -292,8 +292,51 @@ const hasApprovedCartaTerminacion = computed(() => {
   )
 })
 
+const activeAdvances = computed(() => {
+  return (documents.value || []).filter(d => {
+    const t = (d.documentType || '').toLowerCase()
+    return t.startsWith('avance_') && d.isActive && d.status !== 'rejected' && d.status !== 2
+  })
+})
+
+const activeAdvancesCount = computed(() => activeAdvances.value.length)
+const hasMinAdvances = computed(() => activeAdvancesCount.value >= 2)
+
+const nextAdvanceNumber = computed(() => {
+  const nums = activeAdvances.value
+    .map(d => {
+      const match = (d.documentType || '').toLowerCase().match(/^avance_(\d+)$/)
+      return match ? parseInt(match[1], 10) : 0
+    })
+    .filter(n => n > 0)
+  return nums.length > 0 ? Math.max(...nums) + 1 : 1
+})
+
+const nextAdvanceLabel = computed(() => {
+  const n = nextAdvanceNumber.value
+  const ordinals = { 1: 'Primer', 2: 'Segundo', 3: 'Tercer', 4: 'Cuarto', 5: 'Quinto', 6: 'Sexto', 7: 'Séptimo', 8: 'Octavo', 9: 'Noveno', 10: 'Décimo' }
+  const prefix = ordinals[n] ? `${ordinals[n]} Avance de Residencia` : `Avance ${n} de Residencia`
+  return `${prefix} (${n <= 2 ? 'Obligatorio' : 'Adicional'})`
+})
+
+const advanceOptionsList = computed(() => {
+  const nums = new Set([1, 2])
+  nums.add(nextAdvanceNumber.value)
+  for (const d of documents.value || []) {
+    const match = (d.documentType || '').toLowerCase().match(/^avance_(\d+)$/)
+    if (match) nums.add(parseInt(match[1], 10))
+  }
+  return Array.from(nums).sort((a, b) => a - b)
+})
+
 const canUploadProyectoFinal = computed(() => {
-  return hasApprovedFormato29.value && hasApprovedFormato29v2.value && hasApprovedFormato30.value && hasApprovedCartaTerminacion.value
+  return (
+    hasApprovedFormato29.value &&
+    hasApprovedFormato29v2.value &&
+    hasApprovedFormato30.value &&
+    hasApprovedCartaTerminacion.value &&
+    hasMinAdvances.value
+  )
 })
 
 const isProjectReadOnly = computed(() => {
@@ -354,7 +397,7 @@ const statusForm = ref({
   rejectionReason: '',
 })
 
-const documentTypeLabels = {
+const rawDocumentTypeLabels = {
   carta_aceptacion: 'Carta de Aceptación',
   formato_29: 'Formato 29 (Primer Seguimiento)',
   formato_29v2: 'Formato 29 (Segundo Seguimiento)',
@@ -371,6 +414,21 @@ const documentTypeLabels = {
   constancia_acreditacion: 'Constancia de Acreditación',
   otro: 'Otro / Evidencia',
 }
+
+const documentTypeLabels = new Proxy(rawDocumentTypeLabels, {
+  get(target, prop) {
+    if (typeof prop !== 'string') return target[prop]
+    const key = prop.toLowerCase()
+    if (key in target) return target[key]
+    const match = key.match(/^avance_(\d+)$/)
+    if (match) {
+      const n = parseInt(match[1], 10)
+      const ordinals = { 1: 'Primer', 2: 'Segundo', 3: 'Tercer', 4: 'Cuarto', 5: 'Quinto', 6: 'Sexto', 7: 'Séptimo', 8: 'Octavo', 9: 'Noveno', 10: 'Décimo' }
+      return `${ordinals[n] || `Avance ${n}`} Avance de Residencia`
+    }
+    return target[prop]
+  }
+})
 
 function showAlert(message, type = 'info') {
   alertMessage.value = message
@@ -845,8 +903,9 @@ async function handleUploadSubmit() {
   }
 
   // Validación estricta: formatos subsecuentes requieren Carta de Aceptación obligatoria
-  const subsequentFormats = ['avance_1', 'formato_29', 'avance_2', 'formato_29v2', 'formato_30', 'carta_terminacion', 'proyecto_final']
-  if (!isAccreditationProject.value && subsequentFormats.includes(uploadForm.value.documentType.toLowerCase())) {
+  const subsequentFormats = ['formato_29', 'formato_29v2', 'formato_30', 'carta_terminacion', 'proyecto_final']
+  const isAdvanceUpload = uploadForm.value.documentType.toLowerCase().startsWith('avance_')
+  if (!isAccreditationProject.value && (subsequentFormats.includes(uploadForm.value.documentType.toLowerCase()) || isAdvanceUpload)) {
     if (!hasCartaAceptacion.value) {
       showAlert('Es obligatorio registrar y validar la Carta de Aceptación oficial antes de cargar formatos o avances posteriores.', 'warning')
       return
@@ -895,15 +954,17 @@ async function handleUploadSubmit() {
     const isF29v2Approved = existingDocs.some(d => d.documentType === 'formato_29v2' && (d.status === 'approved' || d.status === 1) && d.isActive)
     const isF30Approved = existingDocs.some(d => d.documentType === 'formato_30' && (d.status === 'approved' || d.status === 1) && d.isActive)
     const isCTerminacionApproved = existingDocs.some(d => d.documentType === 'carta_terminacion' && ['approved', 'uploaded', 1].includes(d.status) && d.isActive)
+    const curAdvances = existingDocs.filter(d => (d.documentType || '').toLowerCase().startsWith('avance_') && d.isActive && d.status !== 'rejected' && d.status !== 2)
 
     const missing = []
     if (!isF29Approved) missing.push('Formato 29 (Primer Seguimiento)')
     if (!isF29v2Approved) missing.push('Formato 29 (Segundo Seguimiento)')
     if (!isF30Approved) missing.push('Formato 30 (Evaluación Final)')
     if (!isCTerminacionApproved) missing.push('Carta de Terminación')
+    if (curAdvances.length < 2) missing.push(`Al menos 2 avances de residencia registrados (actuales: ${curAdvances.length})`)
 
     if (missing.length > 0) {
-      showAlert(`Para subir el Reporte de Proyecto Final es obligatorio contar con los siguientes documentos validados: ${missing.join(', ')}.`, 'warning')
+      showAlert(`Para subir el Reporte de Proyecto Final es obligatorio contar con los siguientes documentos válidos: ${missing.join(', ')}.`, 'warning')
       return
     }
   }
@@ -1839,23 +1900,30 @@ onMounted(() => {
               >
                 Carta de Aceptación / Aprobación *
               </option>
-              <option
-                v-if="(hasCartaAceptacion || isAccreditationProject) && (isProjectApproved || isStaff)"
-                value="avance_1"
-              >
-                Primer Avance de Residencia
-              </option>
+              <template v-if="(hasCartaAceptacion || isAccreditationProject) && (isProjectApproved || isStaff)">
+                <template v-if="!isStudent">
+                  <option
+                    v-for="advNum in advanceOptionsList"
+                    :key="`adv_opt_${advNum}`"
+                    :value="`avance_${advNum}`"
+                  >
+                    {{ documentTypeLabels[`avance_${advNum}`] }}
+                  </option>
+                </template>
+                <template v-else>
+                  <option
+                    v-if="nextAdvanceNumber === 1 || studentDeadlineInfo.canUploadSecondPhase"
+                    :value="`avance_${nextAdvanceNumber}`"
+                  >
+                    {{ nextAdvanceLabel }}
+                  </option>
+                </template>
+              </template>
               <option
                 v-if="(hasCartaAceptacion || isAccreditationProject) && (isProjectApproved || isStaff) && (!isStudent || !studentDeadlineInfo.isDocumentBlocked || (studentDeadlineInfo.isDocumentBlocked && studentDeadlineInfo.formato29Status !== 'approved'))"
                 value="formato_29"
               >
                 Formato 29 (Primer Seguimiento)
-              </option>
-              <option
-                v-if="(hasCartaAceptacion || isAccreditationProject) && (isProjectApproved || isStaff) && (!isStudent || studentDeadlineInfo.canUploadSecondPhase)"
-                value="avance_2"
-              >
-                Segundo Avance de Residencia
               </option>
               <option
                 v-if="(hasCartaAceptacion || isAccreditationProject) && (isProjectApproved || isStaff) && (!isStudent || studentDeadlineInfo.canUploadSecondPhase) && (!isStudent || !studentDeadlineInfo.isDocumentBlocked || (studentDeadlineInfo.isDocumentBlocked && studentDeadlineInfo.formato29Status === 'approved'))"
@@ -1907,7 +1975,7 @@ onMounted(() => {
               class="tecnm-form-hint"
               style="color: var(--tecnm-gray-600); margin-top: 0.35rem; display: block;"
             >
-              * Los formatos de segunda fase (Avance 2, Formato 29v2 y Formato 30) se habilitarán únicamente una vez que su primer Formato 29 sea validado y aprobado por la Coordinación.
+              * Los formatos de segunda fase (Avances subsecuentes, Formato 29v2 y Formato 30) se habilitarán únicamente una vez que su primer Formato 29 sea validado y aprobado por la Coordinación.
             </small>
 
             <!-- Panel informativo para Proyecto Final -->
@@ -1920,6 +1988,9 @@ onMounted(() => {
                 <strong>Requisitos para entrega de Proyecto Final:</strong>
               </div>
               <ul style="margin: 0; padding-left: 1.2rem; font-size: 0.825rem; list-style-type: none;">
+                <li :style="{ color: hasMinAdvances ? '#15803d' : '#b91c1c' }">
+                  {{ hasMinAdvances ? '✓' : '✗' }} Mínimo 2 Avances de Residencia registrados (actuales: {{ activeAdvancesCount }})
+                </li>
                 <li :style="{ color: hasApprovedFormato29 ? '#15803d' : '#b91c1c' }">
                   {{ hasApprovedFormato29 ? '✓' : '✗' }} Formato 29 (Primer Seguimiento)
                 </li>
@@ -1940,7 +2011,7 @@ onMounted(() => {
 
             <!-- Panel informativo para Avances -->
             <div
-              v-if="uploadForm.documentType === 'avance_1' || uploadForm.documentType === 'avance_2'"
+              v-if="uploadForm.documentType && uploadForm.documentType.startsWith('avance_')"
               class="tecnm-card"
               style="margin-top: 0.5rem; padding: 0.6rem 0.8rem; background: #F0FDF4; border-left: 4px solid #16A34A;"
             >
@@ -1951,7 +2022,7 @@ onMounted(() => {
 
             <!-- Panel informativo de Asesorías Previas requeridas -->
             <div
-              v-if="uploadForm.documentType === 'formato_29v2' || uploadForm.documentType === 'formato_30' || uploadForm.documentType === 'avance_2'"
+              v-if="uploadForm.documentType === 'formato_29v2' || uploadForm.documentType === 'formato_30' || (uploadForm.documentType && uploadForm.documentType.startsWith('avance_') && uploadForm.documentType !== 'avance_1')"
               class="tecnm-card"
               style="margin-top: 0.5rem; padding: 0.6rem 0.8rem; background: #EFF6FF; border-left: 4px solid var(--tecnm-blue-primary);"
             >
@@ -2168,9 +2239,14 @@ onMounted(() => {
               <option value="dictamen">Dictamen de Aprobación</option>
               <option value="solicitud">Solicitud de Residencia</option>
               <option value="constancia_acreditacion">Constancia de Acreditación (InnovaTec/HackaTec)</option>
-              <option value="avance_1">Primer Avance de Residencia</option>
+              <option
+                v-for="advNum in advanceOptionsList"
+                :key="`reclass_adv_${advNum}`"
+                :value="`avance_${advNum}`"
+              >
+                {{ documentTypeLabels[`avance_${advNum}`] }}
+              </option>
               <option value="formato_29">Formato 29 (Primer Seguimiento)</option>
-              <option value="avance_2">Segundo Avance de Residencia</option>
               <option value="formato_29v2">Formato 29 (Segundo Seguimiento)</option>
               <option value="formato_30">Formato 30 (Evaluación Final)</option>
               <option value="carta_terminacion">Carta de Terminación de la Empresa</option>

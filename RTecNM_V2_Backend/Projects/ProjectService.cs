@@ -537,8 +537,31 @@ public class ProjectService : IProjectService
         if (_currentUser.IsInRole(UserRole.Advisor))
         {
             var advisor = await _advisorRepository.GetByUserIdAsync(_currentUser.UserId);
-            if ((advisor is not null && project.AdvisorId == advisor.Id) || (project.Advisor is not null && project.Advisor.UserId == _currentUser.UserId))
-                return Result<bool>.Success(true);
+            if (advisor is not null)
+            {
+                if (project.AdvisorId == advisor.Id || (project.Advisor is not null && project.Advisor.UserId == _currentUser.UserId))
+                    return Result<bool>.Success(true);
+
+                // Validar por asignación a nivel de estudiante
+                var studentAdvisorId = project.Student?.AdvisorId;
+                if (!studentAdvisorId.HasValue && project.StudentId > 0)
+                {
+                    var st = await _studentRepository.GetByIdAsync(project.StudentId);
+                    studentAdvisorId = st?.AdvisorId;
+                }
+
+                if (studentAdvisorId.HasValue && studentAdvisorId.Value == advisor.Id)
+                {
+                    // Auto-sincronización defensiva del campo project.AdvisorId si quedó null
+                    if (!project.AdvisorId.HasValue)
+                    {
+                        project.AdvisorId = advisor.Id;
+                        project.UpdatedAt = DateTime.UtcNow;
+                        await _repository.UpdateAsync(project);
+                    }
+                    return Result<bool>.Success(true);
+                }
+            }
 
             return Result<bool>.Failure("No tiene acceso a este anteproyecto.", 403);
         }

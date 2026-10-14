@@ -4,6 +4,7 @@ using MiniExcelLibs;
 using TecNM.Residency.Auth;
 using TecNM.Residency.Common;
 using TecNM.Residency.Common.Notifications;
+using TecNM.Residency.Notifications;
 using TecNM.Residency.Projects;
 using TecNM.Residency.Students;
 
@@ -50,10 +51,10 @@ public class DocumentService : IDocumentService
         }
 
         var extension = Path.GetExtension(dto.File.FileName).ToLowerInvariant();
-        var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png" };
+        var allowedExtensions = new[] { ".pdf", ".jpg", ".jpeg", ".png", ".doc", ".docx" };
         if (!allowedExtensions.Contains(extension))
         {
-            throw new ArgumentException("Solo se permiten archivos en formato PDF, JPG o PNG.");
+            throw new ArgumentException("Solo se permiten archivos en formato PDF, Word (.doc, .docx), JPG o PNG.");
         }
 
         if (DocumentType.IsOmitted(dto.DocumentType))
@@ -96,11 +97,30 @@ public class DocumentService : IDocumentService
             {
                 ".jpg" or ".jpeg" => "image/jpeg",
                 ".png" => "image/png",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".doc" => "application/msword",
                 _ => "application/pdf"
             };
 
         var normalizedType = dto.DocumentType.ToLowerInvariant();
         if (normalizedType == DocumentType.CartaAprobacion) normalizedType = DocumentType.CartaAceptacion;
+
+        // Si se está re-subiendo un avance o formato que ya existía (ej. devuelto / con observaciones),
+        // desactivamos lógicamente la versión previa para mantener el mismo identificador y correlativo
+        var previousActiveDocs = await _context.Documents
+            .Where(d => d.ProjectId == dto.ProjectId && d.DocumentType.ToLower() == normalizedType && d.IsActive)
+            .ToListAsync();
+
+        foreach (var prev in previousActiveDocs)
+        {
+            prev.IsActive = false;
+            prev.DeletedAt = DateTime.UtcNow;
+            prev.DeletedBy = _currentUser.UserId;
+            prev.UpdatedAt = DateTime.UtcNow;
+            _context.Documents.Update(prev);
+        }
+
+        bool isAdvisorUploading = _currentUser.IsInRole(UserRole.Advisor);
 
         var document = new Document
         {
@@ -110,7 +130,7 @@ public class DocumentService : IDocumentService
             FilePath = relativePath,
             FileSize = dto.File.Length,
             ContentType = contentType,
-            Status = DocumentStatus.Uploaded,
+            Status = isAdvisorUploading ? DocumentStatus.Approved : DocumentStatus.Uploaded,
             UploadedAt = DateTime.UtcNow,
             IsActive = true,
             IsVisible = true,
@@ -122,7 +142,43 @@ public class DocumentService : IDocumentService
         await _repository.AddAsync(document);
         await _repository.SaveChangesAsync();
 
-        TrySendDocumentNotification(project, document.DocumentType);
+        if (isAdvisorUploading)
+        {
+            // Notificar al estudiante ÚNICAMENTE en la campana/notificaciones in-app, SIN enviar correo electrónico
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    var student = await _studentRepository.GetByIdAsync(project.StudentId);
+                    if (student != null)
+                    {
+                        var friendlyName = GetFriendlyDocumentTypeName(document.DocumentType);
+                        await _context.Notifications.AddAsync(new Notification
+                        {
+                            Title = "Actualización de Documento por tu Asesor",
+                            Description = $"Tu asesor académico ha subido una versión corregida de tu documento '{friendlyName}'. Consúltala en tu Expediente Digital.",
+                            TargetUserId = student.UserId,
+                            SenderId = _currentUser.UserId,
+                            Type = "system",
+                            TargetRoles = "student",
+                            ExpiresAt = DateTime.UtcNow.AddMonths(3),
+                            IsActive = true,
+                            CreatedAt = DateTime.UtcNow,
+                            UpdatedAt = DateTime.UtcNow
+                        });
+                        await _context.SaveChangesAsync();
+                    }
+                }
+                catch
+                {
+                    // Notificación en segundo plano tolerante a fallos
+                }
+            });
+        }
+        else
+        {
+            TrySendDocumentNotification(project, document.DocumentType);
+        }
 
         return MapToDto(document);
     }

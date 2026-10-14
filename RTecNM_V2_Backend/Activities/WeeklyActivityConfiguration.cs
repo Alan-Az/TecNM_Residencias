@@ -28,6 +28,10 @@ public class WeeklyActivityConfiguration : IEntityTypeConfiguration<WeeklyActivi
             .HasMaxLength(250)
             .IsRequired();
 
+        builder.Property(a => a.StartWeek).HasColumnName("start_week");
+        builder.Property(a => a.EstimatedWeeks).HasColumnName("estimated_weeks");
+        builder.Property(a => a.EstimatedDays).HasColumnName("estimated_days");
+
         // BaseEntity fields
         builder.Property(a => a.IsActive).HasColumnName("is_active");
         builder.Property(a => a.IsVisible).HasColumnName("is_visible");

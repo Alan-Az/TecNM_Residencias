@@ -27,23 +27,33 @@ public class ActivityService : IActivityService
         if (string.IsNullOrWhiteSpace(dto.Title))
             return Result<WeeklyActivityDto>.Failure("La descripción de la actividad es obligatoria.");
 
+        int startWeek = Math.Max(1, Math.Min(26, dto.StartWeek ?? 1));
+        int estimatedWeeks = Math.Max(1, Math.Min(26, dto.EstimatedWeeks ?? (dto.EstimatedDays.HasValue ? (int)Math.Ceiling(dto.EstimatedDays.Value / 7.0) : 1)));
+        int estimatedDays = dto.EstimatedDays ?? (estimatedWeeks * 7);
+        int endWeek = Math.Min(26, startWeek + estimatedWeeks - 1);
+
         var activity = new WeeklyActivity
         {
             ProjectId = dto.ProjectId,
             ActivityNumber = dto.ActivityNumber,
             Title = dto.Title.Trim(),
+            StartWeek = startWeek,
+            EstimatedWeeks = estimatedWeeks,
+            EstimatedDays = estimatedDays,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
 
-        // Pre-generate 16 week progress slots (minimum TecNM requirement, up to 26 supported)
-        for (int w = 1; w <= 16; w++)
+        // Generar al menos 16 semanas (o hasta endWeek si es mayor)
+        int totalWeeks = Math.Max(16, endWeek);
+        for (int w = 1; w <= totalWeeks; w++)
         {
+            bool inRange = (w >= startWeek && w <= endWeek);
             activity.Progresses.Add(new WeeklyProgress
             {
                 WeekNumber = w,
-                Status = "pending",
+                Status = inRange ? "in_progress" : "pending",
                 IsActive = true,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -52,6 +62,70 @@ public class ActivityService : IActivityService
 
         var created = await _repository.CreateActivityAsync(activity);
         return Result<WeeklyActivityDto>.Success(MapToDto(created));
+    }
+
+    public async Task<Result<WeeklyActivityDto>> UpdateActivityAsync(long activityId, UpdateActivityDto dto)
+    {
+        var activity = await _repository.GetByIdAsync(activityId);
+        if (activity == null)
+            return Result<WeeklyActivityDto>.Failure("Actividad no encontrada.", 404);
+
+        if (!string.IsNullOrWhiteSpace(dto.Title))
+            activity.Title = dto.Title.Trim();
+
+        int startWeek = Math.Max(1, Math.Min(26, dto.StartWeek ?? activity.StartWeek ?? 1));
+        int estimatedWeeks = Math.Max(1, Math.Min(26, dto.EstimatedWeeks ?? (dto.EstimatedDays.HasValue ? (int)Math.Ceiling(dto.EstimatedDays.Value / 7.0) : activity.EstimatedWeeks ?? 1)));
+        int estimatedDays = dto.EstimatedDays ?? (estimatedWeeks * 7);
+        int endWeek = Math.Min(26, startWeek + estimatedWeeks - 1);
+
+        activity.StartWeek = startWeek;
+        activity.EstimatedWeeks = estimatedWeeks;
+        activity.EstimatedDays = estimatedDays;
+        activity.UpdatedAt = DateTime.UtcNow;
+
+        // Revalidar y ajustar progreso preservando semanas ya completadas o con notas previas
+        var existingByWeek = activity.Progresses.ToDictionary(p => p.WeekNumber);
+        int maxWeek = Math.Max(16, Math.Max(activity.Progresses.Any() ? activity.Progresses.Max(p => p.WeekNumber) : 16, endWeek));
+
+        for (int w = 1; w <= maxWeek; w++)
+        {
+            bool inNewRange = (w >= startWeek && w <= endWeek);
+
+            if (existingByWeek.TryGetValue(w, out var existing))
+            {
+                // NUNCA sobreescribir semanas ya completadas ni semanas con notas existentes del alumno
+                if (existing.Status == "completed" || existing.Status == "completado" || !string.IsNullOrWhiteSpace(existing.Notes))
+                {
+                    continue;
+                }
+
+                if (inNewRange && existing.Status == "pending")
+                {
+                    existing.Status = "in_progress";
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
+                else if (!inNewRange && existing.Status == "in_progress")
+                {
+                    existing.Status = "pending";
+                    existing.UpdatedAt = DateTime.UtcNow;
+                }
+            }
+            else
+            {
+                activity.Progresses.Add(new WeeklyProgress
+                {
+                    ActivityId = activity.Id,
+                    WeekNumber = w,
+                    Status = inNewRange ? "in_progress" : "pending",
+                    IsActive = true,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                });
+            }
+        }
+
+        await _repository.UpdateActivityAsync(activity);
+        return Result<WeeklyActivityDto>.Success(MapToDto(activity));
     }
 
     public async Task<Result<bool>> SaveWeeklyProgressAsync(SaveWeeklyProgressDto dto)
@@ -113,12 +187,23 @@ public class ActivityService : IActivityService
             progresses = progresses.OrderBy(p => p.WeekNumber).ToList();
         }
 
+        var activeProgresses = progresses.Where(p => p.Status != "pending" && p.Status != "pendiente").ToList();
+        int fallbackStart = activeProgresses.Any() ? activeProgresses.Min(p => p.WeekNumber) : 1;
+        int fallbackEstimatedWeeks = activeProgresses.Any() ? (activeProgresses.Max(p => p.WeekNumber) - fallbackStart + 1) : 1;
+
+        int startWeek = a.StartWeek ?? fallbackStart;
+        int estimatedWeeks = a.EstimatedWeeks ?? fallbackEstimatedWeeks;
+        int estimatedDays = a.EstimatedDays ?? (estimatedWeeks * 7);
+
         return new WeeklyActivityDto(
             a.Id,
             a.ProjectId,
             a.ActivityNumber,
             a.Title,
-            progresses
+            progresses,
+            startWeek,
+            estimatedWeeks,
+            estimatedDays
         );
     }
 }

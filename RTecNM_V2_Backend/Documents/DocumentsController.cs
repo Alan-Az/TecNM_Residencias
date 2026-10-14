@@ -205,6 +205,8 @@ public class DocumentsController : ControllerBase
             var resolvedContentType = ext switch
             {
                 ".pdf" => "application/pdf",
+                ".docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                ".doc" => "application/msword",
                 ".jpg" or ".jpeg" => "image/jpeg",
                 ".png" => "image/png",
                 _ => string.IsNullOrWhiteSpace(contentType) || contentType == "application/octet-stream"
@@ -257,9 +259,16 @@ public class DocumentsController : ControllerBase
     /// Desactivación lógica (Soft Delete)
     /// </summary>
     [HttpDelete("{id}")]
-    [Authorize(Roles = "admin,departmenthead,academic,academico")]
+    [Authorize(Roles = "admin,departmenthead,academic,academico,advisor,jefecarrera,careerhead")]
     public async Task<IActionResult> SoftDelete(long id)
     {
+        var doc = await _documentRepository.GetByIdAsync(id);
+        if (doc == null || !doc.IsActive)
+            return NotFound(new { message = $"Documento con ID {id} no encontrado o ya inactivo." });
+
+        var denied = await EnsureProjectAccessAsync(doc.ProjectId);
+        if (denied is not null) return denied;
+
         var success = await _documentService.SoftDeleteAsync(id);
         if (!success)
         {

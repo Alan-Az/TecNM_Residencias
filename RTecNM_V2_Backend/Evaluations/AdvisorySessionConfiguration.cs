@@ -49,6 +49,14 @@ public class AdvisorySessionConfiguration : IEntityTypeConfiguration<AdvisorySes
         builder.Property(a => a.ReviewedBy)
             .HasColumnName("reviewed_by");
 
+        builder.Property(a => a.StudentAttended)
+            .HasColumnName("student_attended")
+            .HasDefaultValue(true)
+            .IsRequired();
+
+        builder.Property(a => a.DocumentId)
+            .HasColumnName("document_id");
+
         builder.HasOne(a => a.Project)
             .WithMany()
             .HasForeignKey(a => a.ProjectId)
@@ -58,6 +66,11 @@ public class AdvisorySessionConfiguration : IEntityTypeConfiguration<AdvisorySes
             .WithMany()
             .HasForeignKey(a => a.AdvisorId)
             .OnDelete(DeleteBehavior.NoAction);
+
+        builder.HasOne(a => a.Document)
+            .WithMany()
+            .HasForeignKey(a => a.DocumentId)
+            .OnDelete(DeleteBehavior.SetNull);
 
         // BaseEntity fields
         builder.Property(a => a.IsActive).HasColumnName("is_active");

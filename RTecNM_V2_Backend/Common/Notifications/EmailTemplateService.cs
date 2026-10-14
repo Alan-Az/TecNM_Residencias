@@ -6,10 +6,71 @@ public interface IEmailTemplateService
     EmailMessageDto BuildLetterAvailableEmail(string studentName, string documentTitle, string loginUrl);
     EmailMessageDto BuildPresentationLetterEmail(string studentName, string controlNumber, string email, string careerName, string companyName, byte[] pdfBytes);
     EmailMessageDto BuildBroadcastNotificationEmail(string title, string description, string audienceLabel, DateTime? expiresAt, string portalUrl, List<string> bccEmails);
+    EmailMessageDto BuildAdvisorySessionEmail(string studentName, string email, string advisorName, DateTime sessionDate, string topicsCovered, bool attended, string? studentAgreements);
 }
 
 public class EmailTemplateService : IEmailTemplateService
 {
+    public EmailMessageDto BuildAdvisorySessionEmail(string studentName, string email, string advisorName, DateTime sessionDate, string topicsCovered, bool attended, string? studentAgreements)
+    {
+        var html = $@"
+<!DOCTYPE html>
+<html lang=""es"">
+<head>
+    <meta charset=""UTF-8"">
+    <title>Registro de Asesoría de Residencia Profesional</title>
+</head>
+<body style=""margin:0; padding:0; background-color:#f4f6f9; font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;"">
+    <table width=""100%"" cellpadding=""0"" cellspacing=""0"" style=""background-color:#f4f6f9; padding:20px 0;"">
+        <tr>
+            <td align=""center"">
+                <table width=""600"" cellpadding=""0"" cellspacing=""0"" style=""background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 12px rgba(0,0,0,0.1); border:1px solid #e1e8ed;"">
+                    <tr>
+                        <td style=""background-color:#1B396A; padding:24px 30px; text-align:center;"">
+                            <h1 style=""color:#ffffff; margin:0; font-size:22px; font-weight:600;"">TecNM Residencias</h1>
+                            <p style=""color:#C5A059; margin:6px 0 0 0; font-size:14px; font-weight:500;"">Seguimiento y Asesoría Técnica de Residencias</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style=""padding:30px; color:#2c3e50;"">
+                            <h2 style=""color:#1B396A; margin-top:0; font-size:18px;"">Estimado(a) {studentName},</h2>
+                            <p style=""line-height:1.6; font-size:15px;"">
+                                Tu Asesor Académico <strong>{advisorName}</strong> ha registrado una sesión de asesoría de seguimiento de tu residencia profesional.
+                            </p>
+                            <div style=""background-color:#f8f9fa; border-left:4px solid {(attended ? "#10b981" : "#ef4444")}; padding:16px 20px; margin:20px 0; border-radius:4px;"">
+                                <p style=""margin:0 0 6px 0; font-size:14px; color:#1B396A;""><strong>Detalles de la Asesoría:</strong></p>
+                                <p style=""margin:0 0 4px 0; font-size:14px;"">• <strong>Fecha de Sesión:</strong> {sessionDate:dd/MM/yyyy HH:mm}</p>
+                                <p style=""margin:0 0 4px 0; font-size:14px;"">• <strong>Asistencia:</strong> {(attended ? "<span style='color:#10b981;font-weight:600;'>Confirmada / Asistió</span>" : "<span style='color:#ef4444;font-weight:600;'>No Asistió</span>")}</p>
+                                <p style=""margin:0 0 4px 0; font-size:14px;"">• <strong>Temas / Avances Abordados:</strong> {topicsCovered}</p>
+                                {(string.IsNullOrWhiteSpace(studentAgreements) ? "" : $"<p style='margin:0; font-size:14px;'>• <strong>Compromisos / Acuerdos:</strong> {studentAgreements}</p>")}
+                            </div>
+                            <p style=""line-height:1.6; font-size:14px; color:#495057;"">
+                                Puedes consultar tu historial de asesorías y bitácoras de avance ingresando a la plataforma institucional.
+                            </p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <td style=""background-color:#f8f9fa; padding:16px 30px; text-align:center; border-top:1px solid #e9ecef; font-size:12px; color:#868e96;"">
+                            Tecnológico Nacional de México — Plataforma de Residencias Profesionales.<br />
+                            Mensaje generado automáticamente. No responda a este correo.
+                        </td>
+                    </tr>
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>";
+
+        return new EmailMessageDto
+        {
+            ToEmail = email,
+            ToName = studentName,
+            Subject = $"Registro de Asesoría de Residencia — {(attended ? "Asistencia Registrada" : "Falta Registrada")}",
+            BodyHtml = html
+        };
+    }
+
     public EmailMessageDto BuildPresentationLetterEmail(string studentName, string controlNumber, string email, string careerName, string companyName, byte[] pdfBytes)
     {
         var html = $@"

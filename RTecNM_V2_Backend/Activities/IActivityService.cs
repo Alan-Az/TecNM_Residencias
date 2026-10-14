@@ -6,5 +6,6 @@ public interface IActivityService
 {
     Task<Result<List<WeeklyActivityDto>>> GetScheduleByProjectIdAsync(long projectId);
     Task<Result<WeeklyActivityDto>> CreateActivityAsync(CreateActivityDto dto);
+    Task<Result<WeeklyActivityDto>> UpdateActivityAsync(long activityId, UpdateActivityDto dto);
     Task<Result<bool>> SaveWeeklyProgressAsync(SaveWeeklyProgressDto dto);
 }

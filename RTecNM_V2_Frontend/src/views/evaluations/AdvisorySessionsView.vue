@@ -85,6 +85,7 @@ const includeInactive = ref(false)
 const isCreateModalOpen = ref(false)
 const isEditModalOpen = ref(false)
 const isSubmitting = ref(false)
+const projectDocuments = ref([])
 
 // Formulario de Alta
 const createForm = ref({
@@ -93,6 +94,8 @@ const createForm = ref({
   sessionDate: new Date().toISOString().split('T')[0],
   topicsCovered: '',
   studentAgreements: '',
+  studentAttended: true,
+  documentId: null,
 })
 const initialAdvisor = ref(null)
 
@@ -103,6 +106,8 @@ const editForm = ref({
   sessionDate: '',
   topicsCovered: '',
   studentAgreements: '',
+  studentAttended: true,
+  documentId: null,
 })
 const editInitialAdvisor = ref(null)
 
@@ -181,7 +186,7 @@ async function resolveStudentProject() {
     const res = await apiClient.get('/v1/projects/me/current')
     if (res.data && res.data.id) {
       currentProject.value = res.data
-      await loadSessions()
+      await Promise.all([loadSessions(), loadProjectDocuments()])
     } else {
       currentProject.value = null
       sessions.value = []
@@ -237,12 +242,25 @@ async function loadInitialProjectForStaff() {
   }
 }
 
+async function loadProjectDocuments() {
+  if (!currentProject.value?.id) {
+    projectDocuments.value = []
+    return
+  }
+  try {
+    const res = await apiClient.get(`/v1/documents/project/${currentProject.value.id}`)
+    projectDocuments.value = Array.isArray(res.data) ? res.data : []
+  } catch {
+    projectDocuments.value = []
+  }
+}
+
 async function selectProject(project) {
   if (!project || !project.id) return
   currentProject.value = project
   pageNumber.value = 1
   errorMessage.value = ''
-  await loadSessions()
+  await Promise.all([loadSessions(), loadProjectDocuments()])
 
   // Enriquecer datos de estudiante si faltan
   if (!project.studentName && !project.student_name) {
@@ -335,6 +353,8 @@ function openCreateModal() {
     sessionDate: new Date().toISOString().split('T')[0],
     topicsCovered: '',
     studentAgreements: '',
+    studentAttended: true,
+    documentId: null,
   }
   initialAdvisor.value = currentProject.value.advisorId
     ? {
@@ -373,6 +393,8 @@ async function handleCreateSubmit() {
         : null,
       topicsCovered: createForm.value.topicsCovered.trim(),
       studentAgreements: createForm.value.studentAgreements.trim(),
+      studentAttended: createForm.value.studentAttended !== false,
+      documentId: createForm.value.documentId || null,
     }
 
     await apiClient.post('/v1/evaluations/sessions', payload)
@@ -397,6 +419,8 @@ function openEditModal(session) {
       : '',
     topicsCovered: session.topicsCovered || '',
     studentAgreements: session.studentAgreements || '',
+    studentAttended: session.studentAttended !== false,
+    documentId: session.documentId || null,
   }
   editInitialAdvisor.value = session.advisorId
     ? { id: session.advisorId, fullName: session.advisorName || 'Asesor' }
@@ -423,6 +447,8 @@ async function handleEditSubmit() {
         : null,
       topicsCovered: editForm.value.topicsCovered.trim(),
       studentAgreements: editForm.value.studentAgreements.trim(),
+      studentAttended: editForm.value.studentAttended !== false,
+      documentId: editForm.value.documentId || null,
     }
 
     await apiClient.put(`/v1/evaluations/sessions/${editForm.value.id}`, payload)
@@ -640,6 +666,7 @@ onMounted(() => {
                     {{ sortBy.toLowerCase() === 'advisorname' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
                   </span>
                 </th>
+                <th>Asistencia</th>
                 <th
                   class="tecnm-th-sortable"
                   @click="handleSort('topicsCovered')"
@@ -663,12 +690,12 @@ onMounted(() => {
             </thead>
             <tbody id="sessionsTableBody">
               <tr v-if="isLoading">
-                <td colspan="6" class="tecnm-table-empty">
+                <td colspan="7" class="tecnm-table-empty">
                   Cargando sesiones de asesoría...
                 </td>
               </tr>
               <tr v-else-if="isEmptyState || !currentProject">
-                <td colspan="6" style="padding: 3rem 1.5rem; text-align: center;">
+                <td colspan="7" style="padding: 3rem 1.5rem; text-align: center;">
                   <div style="max-width: 500px; margin: 0 auto; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
                     <div style="width: 54px; height: 54px; border-radius: 50%; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center;">
                       <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
@@ -702,12 +729,12 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-else-if="errorMessage">
-                <td colspan="6" class="tecnm-table-empty tecnm-text-danger">
+                <td colspan="7" class="tecnm-table-empty tecnm-text-danger">
                   {{ errorMessage }}
                 </td>
               </tr>
               <tr v-else-if="sessions.length === 0">
-                <td colspan="6" class="tecnm-table-empty">
+                <td colspan="7" class="tecnm-table-empty">
                   <span v-if="isProjectCompleted">No hay sesiones de asesoría registradas en este proyecto concluido.</span>
                   <span v-else-if="isProjectPending">Las sesiones de asesoría se habilitarán una vez dictaminado favorablemente el anteproyecto.</span>
                   <span v-else>No hay sesiones de asesoría registradas en la base de datos para este proyecto.</span>
@@ -721,7 +748,20 @@ onMounted(() => {
                 <td><strong>{{ formatTecNMDate(s.sessionDate) }}</strong></td>
                 <td>{{ s.studentName || 'Estudiante' }}</td>
                 <td>{{ s.advisorName || 'Asesor' }}</td>
-                <td>{{ s.topicsCovered }}</td>
+                <td>
+                  <span
+                    class="tecnm-badge"
+                    :class="s.studentAttended !== false ? 'tecnm-badge-approved' : 'tecnm-badge-rejected'"
+                  >
+                    {{ s.studentAttended !== false ? 'Asistió' : 'No asistió' }}
+                  </span>
+                </td>
+                <td>
+                  <div>{{ s.topicsCovered }}</div>
+                  <div v-if="s.documentId" style="font-size: 0.75rem; color: #0284c7; margin-top: 0.25rem;">
+                    📎 Doc #{{ s.documentId }}
+                  </div>
+                </td>
                 <td>{{ s.studentAgreements || 'N/A' }}</td>
                 <td>
                   <div class="tecnm-row-actions">
@@ -863,6 +903,38 @@ onMounted(() => {
             ></textarea>
           </div>
 
+          <div class="tecnm-form-group">
+            <label class="tecnm-switch-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <span class="tecnm-switch">
+                <input
+                  id="createStudentAttended"
+                  v-model="createForm.studentAttended"
+                  type="checkbox"
+                />
+                <span class="tecnm-switch-slider"></span>
+              </span>
+              <span><strong>Asistencia:</strong> {{ createForm.studentAttended ? 'El estudiante asistió a la asesoría' : 'El estudiante NO asistió' }}</span>
+            </label>
+          </div>
+
+          <div v-if="projectDocuments.length > 0" class="tecnm-form-group">
+            <label for="createDocumentId" class="tecnm-label">Documento / Avance Asociado (Opcional)</label>
+            <select
+              id="createDocumentId"
+              v-model="createForm.documentId"
+              class="tecnm-form-control"
+            >
+              <option :value="null">-- Ninguno / Asesoría General --</option>
+              <option
+                v-for="doc in projectDocuments"
+                :key="doc.id"
+                :value="doc.id"
+              >
+                {{ doc.documentType }} — {{ doc.originalFileName || doc.fileName }} (v{{ doc.versionNumber }})
+              </option>
+            </select>
+          </div>
+
           <div class="tecnm-modal-footer">
             <button
               id="cancelAdvisoryModalBtn"
@@ -950,6 +1022,38 @@ onMounted(() => {
               class="tecnm-form-control"
               rows="2"
             ></textarea>
+          </div>
+
+          <div class="tecnm-form-group">
+            <label class="tecnm-switch-label" style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+              <span class="tecnm-switch">
+                <input
+                  id="editStudentAttended"
+                  v-model="editForm.studentAttended"
+                  type="checkbox"
+                />
+                <span class="tecnm-switch-slider"></span>
+              </span>
+              <span><strong>Asistencia:</strong> {{ editForm.studentAttended ? 'El estudiante asistió a la asesoría' : 'El estudiante NO asistió' }}</span>
+            </label>
+          </div>
+
+          <div v-if="projectDocuments.length > 0" class="tecnm-form-group">
+            <label for="editDocumentId" class="tecnm-label">Documento / Avance Asociado (Opcional)</label>
+            <select
+              id="editDocumentId"
+              v-model="editForm.documentId"
+              class="tecnm-form-control"
+            >
+              <option :value="null">-- Ninguno / Asesoría General --</option>
+              <option
+                v-for="doc in projectDocuments"
+                :key="doc.id"
+                :value="doc.id"
+              >
+                {{ doc.documentType }} — {{ doc.originalFileName || doc.fileName }} (v{{ doc.versionNumber }})
+              </option>
+            </select>
           </div>
 
           <div class="tecnm-modal-footer">

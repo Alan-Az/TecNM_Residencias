@@ -25,6 +25,7 @@ public class DashboardMetricsService : IDashboardMetricsService
         int studentsWithoutAdvisor = 0;
         int inProgressProjects = 0;
         int eligibleStudentsForAdvisor = 0;
+        int aptStudents = 0;
         int activeCompanies = await _context.Companies.CountAsync(c => c.IsActive);
 
         if (careerId.HasValue && careerId.Value > 0)
@@ -46,6 +47,14 @@ public class DashboardMetricsService : IDashboardMetricsService
 
             eligibleStudentsForAdvisor = studentsWithAdvisor + studentsWithoutAdvisor;
             activeAdvisors = await _context.Advisors.CountAsync(a => a.IsActive && a.DepartmentId == cid);
+
+            // Alumnos Aptos para Residencia:
+            // Cumplen con servicio social, actividades complementarias, requisitos especiales y sin bloqueos activos,
+            // O ya cuentan con un anteproyecto/proyecto activo registrado (no borrador, no cancelado).
+            aptStudents = await _context.Students.CountAsync(s => s.IsActive && s.CareerId == cid &&
+                ((s.HasSocialService && s.HasComplementaryActivities && s.HasSpecialRequirements &&
+                  !_context.StudentBlocks.Any(b => b.StudentId == s.Id && b.IsActive)) ||
+                 _context.Projects.Any(p => p.StudentId == s.Id && p.IsActive && p.Status != ProjectStatus.Draft && p.Status != ProjectStatus.Cancelled)));
 
             // Para Jefe de Carrera: se excluyen los borradores y cancelados del conteo de anteproyectos
             totalProjects = await _context.Projects.CountAsync(p => p.IsActive && p.Status != ProjectStatus.Draft && p.Status != ProjectStatus.Cancelled && p.Student != null && p.Student.CareerId == cid);
@@ -74,6 +83,13 @@ public class DashboardMetricsService : IDashboardMetricsService
 
             eligibleStudentsForAdvisor = studentsWithAdvisor + studentsWithoutAdvisor;
             activeAdvisors = await _context.Advisors.CountAsync(a => a.IsActive);
+
+            // Alumnos Aptos para Residencia:
+            aptStudents = await _context.Students.CountAsync(s => s.IsActive &&
+                ((s.HasSocialService && s.HasComplementaryActivities && s.HasSpecialRequirements &&
+                  !_context.StudentBlocks.Any(b => b.StudentId == s.Id && b.IsActive)) ||
+                 _context.Projects.Any(p => p.StudentId == s.Id && p.IsActive && p.Status != ProjectStatus.Draft && p.Status != ProjectStatus.Cancelled)));
+
             totalProjects = await _context.Projects.CountAsync(p => p.IsActive && p.Status != ProjectStatus.Draft && p.Status != ProjectStatus.Cancelled);
             approvedProjects = await _context.Projects.CountAsync(p => p.IsActive && p.Status == ProjectStatus.Approved);
             inProgressProjects = await _context.Projects.CountAsync(p => p.IsActive && p.Status == ProjectStatus.InProgress);
@@ -96,7 +112,8 @@ public class DashboardMetricsService : IDashboardMetricsService
             studentsWithAdvisor,
             studentsWithoutAdvisor,
             inProgressProjects,
-            eligibleStudentsForAdvisor
+            eligibleStudentsForAdvisor,
+            aptStudents
         );
 
         return Result<DashboardMetricsResponseDto>.Success(metrics);

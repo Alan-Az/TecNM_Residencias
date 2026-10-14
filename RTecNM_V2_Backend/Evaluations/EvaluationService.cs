@@ -1,6 +1,9 @@
+using Microsoft.EntityFrameworkCore;
 using TecNM.Residency.Advisors;
 using TecNM.Residency.Auth;
 using TecNM.Residency.Common;
+using TecNM.Residency.Common.Notifications;
+using TecNM.Residency.Notifications;
 using TecNM.Residency.Projects;
 
 namespace TecNM.Residency.Evaluations;
@@ -11,17 +14,29 @@ public class EvaluationService : IEvaluationService
     private readonly ICurrentUserService _currentUser;
     private readonly IAdvisorRepository _advisorRepository;
     private readonly IProjectRepository _projectRepository;
+    private readonly INotificationService _notificationService;
+    private readonly IEmailQueue _emailQueue;
+    private readonly IEmailTemplateService _emailTemplateService;
+    private readonly AppDbContext _context;
 
     public EvaluationService(
         IEvaluationRepository repository,
         ICurrentUserService currentUser,
         IAdvisorRepository advisorRepository,
-        IProjectRepository projectRepository)
+        IProjectRepository projectRepository,
+        INotificationService notificationService,
+        IEmailQueue emailQueue,
+        IEmailTemplateService emailTemplateService,
+        AppDbContext context)
     {
         _repository = repository;
         _currentUser = currentUser;
         _advisorRepository = advisorRepository;
         _projectRepository = projectRepository;
+        _notificationService = notificationService;
+        _emailQueue = emailQueue;
+        _emailTemplateService = emailTemplateService;
+        _context = context;
     }
 
     private async Task<long?> GetSessionAdvisorIdAsync()
@@ -192,6 +207,8 @@ public class EvaluationService : IEvaluationService
             SessionDate = dto.SessionDate ?? DateTime.UtcNow,
             TopicsCovered = dto.TopicsCovered.Trim(),
             StudentAgreements = dto.StudentAgreements?.Trim(),
+            StudentAttended = dto.StudentAttended,
+            DocumentId = dto.DocumentId,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow,
@@ -199,6 +216,51 @@ public class EvaluationService : IEvaluationService
         };
 
         var created = await _repository.CreateAdvisorySessionAsync(session);
+
+        // Notificación in-app y correo electrónico al estudiante
+        try
+        {
+            var student = await _context.Students
+                .Include(st => st.User)
+                .FirstOrDefaultAsync(st => st.Id == project.StudentId);
+
+            var advisor = await _advisorRepository.GetByIdAsync(advisorId);
+            var advisorName = advisor?.FullName ?? "Asesor Académico";
+
+            if (student != null)
+            {
+                // 1. Notificación In-App en la plataforma
+                await _notificationService.CreateNotificationAsync(new CreateNotificationDto
+                {
+                    Title = "Sesión de Asesoría Registrada",
+                    Description = $"Tu asesor académico {advisorName} registró la asesoría del {session.SessionDate:dd/MM/yyyy}. Asistencia: {(session.StudentAttended ? "Confirmada / Asistió" : "No asistió")}. Temas: {session.TopicsCovered}",
+                    TargetUserId = student.UserId,
+                    ExpiresAt = DateTime.UtcNow.AddMonths(3),
+                    TargetRoles = new List<string> { "student" }
+                });
+
+                // 2. Correo electrónico al alumno
+                if (student.User != null && !string.IsNullOrWhiteSpace(student.User.Email))
+                {
+                    var studentFullName = $"{student.FirstName} {student.LastName}".Trim();
+                    var emailMsg = _emailTemplateService.BuildAdvisorySessionEmail(
+                        studentFullName,
+                        student.User.Email,
+                        advisorName,
+                        session.SessionDate,
+                        session.TopicsCovered,
+                        session.StudentAttended,
+                        session.StudentAgreements
+                    );
+                    _emailQueue.Enqueue(emailMsg);
+                }
+            }
+        }
+        catch
+        {
+            // Manejo resiliente
+        }
+
         return Result<AdvisorySessionResponseDto>.Success(MapSessionToDto(created));
     }
 
@@ -226,6 +288,8 @@ public class EvaluationService : IEvaluationService
         session.SessionDate = dto.SessionDate ?? session.SessionDate;
         session.TopicsCovered = dto.TopicsCovered.Trim();
         session.StudentAgreements = dto.StudentAgreements?.Trim();
+        session.StudentAttended = dto.StudentAttended;
+        session.DocumentId = dto.DocumentId ?? session.DocumentId;
         session.UpdatedAt = DateTime.UtcNow;
         session.UpdatedBy = _currentUser.UserId;
 
@@ -358,7 +422,9 @@ public class EvaluationService : IEvaluationService
             s.ReviewStatus ?? "pending",
             s.ReviewNotes,
             s.ReviewedAt,
-            s.ReviewedBy
+            s.ReviewedBy,
+            s.StudentAttended,
+            s.DocumentId
         );
     }
 

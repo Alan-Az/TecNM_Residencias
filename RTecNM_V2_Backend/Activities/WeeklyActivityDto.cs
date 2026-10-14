@@ -12,7 +12,10 @@ public record WeeklyActivityDto(
     long ProjectId,
     int ActivityNumber,
     string Title,
-    List<WeeklyProgressDto> Progresses
+    List<WeeklyProgressDto> Progresses,
+    int? StartWeek = 1,
+    int? EstimatedWeeks = 1,
+    int? EstimatedDays = 7
 );
 
 public record SaveWeeklyProgressDto(
@@ -25,5 +28,15 @@ public record SaveWeeklyProgressDto(
 public record CreateActivityDto(
     long ProjectId,
     int ActivityNumber,
-    string Title
+    string Title,
+    int? StartWeek = 1,
+    int? EstimatedWeeks = 1,
+    int? EstimatedDays = 7
+);
+
+public record UpdateActivityDto(
+    string Title,
+    int? StartWeek = 1,
+    int? EstimatedWeeks = 1,
+    int? EstimatedDays = 7
 );

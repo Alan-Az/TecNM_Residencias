@@ -1,5 +1,6 @@
 using TecNM.Residency.Advisors;
 using TecNM.Residency.Common;
+using TecNM.Residency.Documents;
 using TecNM.Residency.Projects;
 
 namespace TecNM.Residency.Evaluations;
@@ -11,6 +12,8 @@ public class AdvisorySession : BaseEntity
     public DateTime SessionDate { get; set; } = DateTime.UtcNow;
     public string TopicsCovered { get; set; } = string.Empty;
     public string? StudentAgreements { get; set; }
+    public bool StudentAttended { get; set; } = true;
+    public long? DocumentId { get; set; }
 
     public string ReviewStatus { get; set; } = "pending"; // pending | approved | observed
     public string? ReviewNotes { get; set; }
@@ -19,4 +22,5 @@ public class AdvisorySession : BaseEntity
 
     public Project? Project { get; set; }
     public Advisor? Advisor { get; set; }
+    public Document? Document { get; set; }
 }

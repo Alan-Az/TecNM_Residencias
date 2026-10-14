@@ -56,6 +56,27 @@ public class ActivitiesController : ControllerBase
         return Ok(result.Data);
     }
 
+    [HttpPut("{activityId:long}")]
+    [Authorize(Roles = "student")]
+    public async Task<IActionResult> UpdateActivity(long projectId, long activityId, [FromBody] UpdateActivityDto dto)
+    {
+        var denied = await EnsureProjectAccessAsync(projectId);
+        if (denied is not null) return denied;
+
+        var projectResult = await _projectService.GetProjectByIdAsync(projectId);
+        if (projectResult.IsSuccess && projectResult.Data != null)
+        {
+            if (projectResult.Data.IsCompleted || projectResult.Data.IsReadOnly)
+                return StatusCode(400, new { message = "No se puede editar actividades de un proyecto concluido o en solo lectura." });
+        }
+
+        var result = await _activityService.UpdateActivityAsync(activityId, dto);
+        if (!result.IsSuccess)
+            return StatusCode(result.StatusCode ?? 400, new { message = result.ErrorMessage });
+
+        return Ok(result.Data);
+    }
+
     [HttpPost("progress")]
     [Authorize(Roles = "student")]
     public async Task<IActionResult> SaveProgress(long projectId, [FromBody] SaveWeeklyProgressDto dto)

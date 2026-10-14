@@ -750,11 +750,12 @@ onMounted(() => {
       class="tecnm-kpis-grid tecnm-kpis-grid--6"
     >
       <TecnmKpiCard
-        title="Estudiantes Registrados"
-        :value="adminMetrics.totalStudents"
+        title="Alumnos Aptos para Residencia"
+        :value="adminMetrics.aptStudents ?? 0"
         variant="navy"
         :loading="isLoading"
         to="/students"
+        :subtext="`${adminMetrics.totalStudents ?? 0} estudiantes registrados`"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -904,12 +905,12 @@ onMounted(() => {
       class="tecnm-kpis-grid tecnm-kpis-grid--4"
     >
       <TecnmKpiCard
-        title="Residentes Registrados"
-        :value="adminMetrics.totalStudents ?? careerStudents.length ?? 0"
+        title="Alumnos Aptos para Residencia"
+        :value="adminMetrics.aptStudents ?? 0"
         variant="navy"
         :loading="isLoading"
         to="/students"
-        subtext="Alumnos de tu carrera"
+        :subtext="`${adminMetrics.totalStudents ?? careerStudents.length ?? 0} alumnos registrados`"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1000,12 +1001,12 @@ onMounted(() => {
       </TecnmKpiCard>
 
       <TecnmKpiCard
-        title="Total Residentes"
-        :value="adminMetrics.totalStudents ?? 0"
+        title="Alumnos Aptos para Residencia"
+        :value="adminMetrics.aptStudents ?? 0"
         variant="slate"
         :loading="isLoading"
         to="/students"
-        subtext="En vinculación institucional"
+        :subtext="`${adminMetrics.totalStudents ?? 0} registrados en vinculación`"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -1035,11 +1036,11 @@ onMounted(() => {
       class="tecnm-kpis-grid tecnm-kpis-grid--4"
     >
       <TecnmKpiCard
-        title="Total Residentes"
-        :value="adminMetrics.totalStudents ?? 0"
+        title="Alumnos Aptos para Residencia"
+        :value="adminMetrics.aptStudents ?? 0"
         variant="navy"
         :loading="isLoading"
-        subtext="Matrícula en residencia"
+        :subtext="`${adminMetrics.totalStudents ?? 0} matrícula total registrada`"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">

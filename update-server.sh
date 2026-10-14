@@ -162,6 +162,11 @@ if [ -f "${SCRIPT_DIR}/docs/database/reclassify_carta_aceptacion.sql" ]; then
     docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/reclassify_carta_aceptacion.sql" > /dev/null 2>&1 || true
 fi
 
+if [ -f "${SCRIPT_DIR}/docs/database/add_activities_and_advisory_extensions.sql" ]; then
+    echo -e "   ${CYAN}🗄️  Asegurando extensiones de cronograma y asesorías en PostgreSQL...${NC}"
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/add_activities_and_advisory_extensions.sql" > /dev/null 2>&1 || true
+fi
+
 # Recrear backend con la nueva imagen preservando volúmenes de uploads
 echo -e "   ${CYAN}🔄 Actualizando contenedor de Backend API...${NC}"
 docker compose up -d --no-deps backend

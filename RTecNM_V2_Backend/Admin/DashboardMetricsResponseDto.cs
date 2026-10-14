@@ -11,5 +11,6 @@ public record DashboardMetricsResponseDto(
     int StudentsWithAdvisor = 0,
     int StudentsWithoutAdvisor = 0,
     int InProgressProjects = 0,
-    int EligibleStudentsForAdvisor = 0
+    int EligibleStudentsForAdvisor = 0,
+    int AptStudents = 0
 );

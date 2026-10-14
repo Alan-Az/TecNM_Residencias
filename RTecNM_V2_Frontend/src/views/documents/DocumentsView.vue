@@ -348,7 +348,7 @@ const isProjectReadOnly = computed(() => {
 const canUploadDocument = computed(() => {
   if (authStore.hasRole('vinculacion')) return false
   if (isStaff.value) return true
-  if (isAdvisor.value) return false
+  if (isAdvisor.value) return !!currentProject.value?.id && !isProjectReadOnly.value
   if (!currentProject.value?.id) return false
   // Los estudiantes con InnovaTecNM pueden seguir subiendo diplomas/evidencias libremente
   if (isAccreditationActive.value) {
@@ -357,6 +357,11 @@ const canUploadDocument = computed(() => {
   }
   return !isProjectReadOnly.value
 })
+
+function isAdvanceDoc(doc) {
+  const t = (doc?.documentType || '').toLowerCase()
+  return t.startsWith('avance_') || t === 'proyecto_final'
+}
 
 // Paginación y Filtros
 const pageNumber = ref(1)
@@ -856,10 +861,10 @@ function onFileSelected(e) {
     return
   }
 
-  const allowed = ['.pdf', '.jpg', '.jpeg', '.png']
+  const allowed = ['.pdf', '.jpg', '.jpeg', '.png', '.doc', '.docx']
   const ext = '.' + (file.name.split('.').pop() || '').toLowerCase()
   if (!allowed.includes(ext)) {
-    showAlert('No se pudo seleccionar: formato no permitido (solo PDF, JPG o PNG).', 'danger')
+    showAlert('No se pudo seleccionar: formato no permitido (solo PDF, Word .doc/.docx, JPG o PNG).', 'danger')
     e.target.value = ''
     clearLocalPreview()
     return
@@ -875,7 +880,13 @@ function onFileSelected(e) {
   uploadForm.value.file = file
   if (uploadPreviewUrl.value) URL.revokeObjectURL(uploadPreviewUrl.value)
   uploadPreviewUrl.value = URL.createObjectURL(file)
-  uploadPreviewType.value = file.type.startsWith('image/') ? 'image' : 'pdf'
+  if (file.type.startsWith('image/')) {
+    uploadPreviewType.value = 'image'
+  } else if (ext === '.doc' || ext === '.docx') {
+    uploadPreviewType.value = 'word'
+  } else {
+    uploadPreviewType.value = 'pdf'
+  }
 }
 
 function clearLocalPreview() {
@@ -1080,7 +1091,41 @@ function closeStatusModal() {
   }
 }
 
+function openAdvisorUpdateModal(doc) {
+  if (!currentProject.value?.id) return
+  uploadForm.value = {
+    projectId: currentProject.value.id,
+    documentType: (doc.documentType || '').toLowerCase(),
+    file: null,
+  }
+  uploadInitialProject.value = currentProject.value
+    ? { id: currentProject.value.id, title: currentProject.value.title || 'Anteproyecto' }
+    : null
+  clearLocalPreview()
+  isUploadModalOpen.value = true
+}
+
 async function handleSaveStatus() {
+  if (statusForm.value.status === 'rejected' && currentProject.value?.id) {
+    try {
+      const sesRes = await apiClient.get(`/v1/evaluations/advisory-sessions/project/${currentProject.value.id}`)
+      const sessionsList = sesRes.data?.items || (Array.isArray(sesRes.data) ? sesRes.data : [])
+      if (sessionsList.length > 0) {
+        const scheduleAnother = await confirm({
+          title: 'Asesoría ya registrada para este proyecto',
+          message: 'Ya registraste previamente la asesoría de este avance de residencia. ¿Deseas agendar otra asesoría o dejar sin agendar ya que ya se revisó?',
+          okText: 'Agendar Otra Asesoría',
+          cancelText: 'Dejar Sin Agendar (Regresar Documento)',
+        })
+        if (scheduleAnother) {
+          window.location.href = `/evaluations/advisory-sessions?projectId=${currentProject.value.id}`
+        }
+      }
+    } catch (checkErr) {
+      console.warn('No se pudo verificar el historial de asesorías:', checkErr)
+    }
+  }
+
   isSubmitting.value = true
   try {
     const payload = {
@@ -1809,6 +1854,15 @@ onMounted(() => {
                       📄 Convertir a Carta
                     </button>
                     <button
+                      v-if="isAdvisor && isAdvanceDoc(doc) && !isProjectReadOnly"
+                      type="button"
+                      class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                      title="Subir actualización o corrección editada de este archivo"
+                      @click="openAdvisorUpdateModal(doc)"
+                    >
+                      ✏️ Actualizar Archivo
+                    </button>
+                    <button
                       v-if="authStore.canSeeAudit"
                       type="button"
                       class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
@@ -1817,7 +1871,7 @@ onMounted(() => {
                       Auditoría
                     </button>
                     <button
-                      v-if="isStaff && !authStore.hasRole('vinculacion')"
+                      v-if="(isStaff || (isAdvisor && isAdvanceDoc(doc))) && !authStore.hasRole('vinculacion')"
                       type="button"
                       class="tecnm-btn tecnm-btn-danger tecnm-btn-sm"
                       @click="handleDeleteDocument(doc)"
@@ -2081,16 +2135,16 @@ onMounted(() => {
           </div>
 
           <div class="tecnm-form-group">
-            <label for="documentFile" class="tecnm-label">Archivo PDF o Imagen (Solo hasta 5MB) *</label>
+            <label for="documentFile" class="tecnm-label">Archivo PDF, Word (.doc, .docx) o Imagen (Hasta 5MB) *</label>
             <input
               id="documentFile"
               type="file"
               class="tecnm-form-control"
-              accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
+              accept=".pdf,.jpg,.jpeg,.png,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/jpeg,image/png"
               required
               @change="onFileSelected"
             />
-            <span class="tecnm-form-hint">Solo se permiten archivos en formato PDF, JPG o PNG de hasta 5MB.</span>
+            <span class="tecnm-form-hint">Formatos permitidos: PDF, Word (.docx, .doc), JPG o PNG de hasta 5MB.</span>
           </div>
 
           <div
@@ -2105,6 +2159,14 @@ onMounted(() => {
               alt="Vista previa del archivo seleccionado"
               style="max-width: 100%; max-height: 240px; object-fit: contain;"
             />
+            <div
+              v-else-if="uploadPreviewType === 'word'"
+              style="padding: 2rem 1rem; background-color: var(--color-surface-subtle, #f8fafc); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.5rem;"
+            >
+              <span style="font-size: 2.5rem;">📄</span>
+              <strong style="color: var(--color-text, #334155);">Documento de Microsoft Word preparado</strong>
+              <span style="font-size: 0.85rem; color: var(--color-text-muted, #64748b);">{{ uploadForm.file?.name }} ({{ Math.round((uploadForm.file?.size || 0)/1024) }} KB)</span>
+            </div>
             <embed
               v-else
               :src="uploadPreviewUrl"
@@ -2170,6 +2232,23 @@ onMounted(() => {
             alt="Vista previa del documento"
             style="max-width: 100%; max-height: 100%; object-fit: contain;"
           />
+          <div
+            v-else-if="previewDoc?.fileName?.toLowerCase().endsWith('.doc') || previewDoc?.fileName?.toLowerCase().endsWith('.docx')"
+            style="padding: 3rem 2rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem;"
+          >
+            <span style="font-size: 4rem;">📄</span>
+            <h4 style="margin: 0; color: var(--color-text, #1e293b);">{{ previewDoc?.fileName }}</h4>
+            <p style="margin: 0; color: var(--color-text-muted, #64748b); max-width: 480px; font-size: 0.95rem;">
+              Los documentos de Word (.docx / .doc) se descargan directamente para su lectura y edición en Microsoft Word o LibreOffice.
+            </p>
+            <button
+              type="button"
+              class="tecnm-btn tecnm-btn-primary"
+              @click="downloadDocument(previewDoc)"
+            >
+              📥 Descargar Documento Word
+            </button>
+          </div>
           <embed
             v-else
             :src="previewObjectUrl"
@@ -2212,7 +2291,7 @@ onMounted(() => {
             v-if="previewObjectUrl"
             id="statusPreviewContainer"
             class="document-preview-container document-preview-compact"
-            style="margin-bottom: 1rem; border: 1px solid var(--tecnm-gray-200); border-radius: var(--tecnm-radius-md); overflow: hidden; max-height: 200px; text-align: center;"
+            style="margin-bottom: 1rem; border: 1px solid var(--tecnm-gray-200); border-radius: var(--tecnm-radius-md); overflow: hidden; min-height: 120px; max-height: 220px; text-align: center; display: flex; align-items: center; justify-content: center;"
           >
             <img
               v-if="statusForm.fileName?.toLowerCase().endsWith('.png') || statusForm.fileName?.toLowerCase().endsWith('.jpg') || statusForm.fileName?.toLowerCase().endsWith('.jpeg')"
@@ -2220,6 +2299,20 @@ onMounted(() => {
               alt="Vista previa del documento"
               style="max-width: 100%; max-height: 190px; object-fit: contain;"
             />
+            <div
+              v-else-if="statusForm.fileName?.toLowerCase().endsWith('.doc') || statusForm.fileName?.toLowerCase().endsWith('.docx')"
+              style="padding: 1.5rem 1rem; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;"
+            >
+              <span style="font-size: 2rem;">📄</span>
+              <strong style="font-size: 0.9rem;">Documento de Word</strong>
+              <button
+                type="button"
+                class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                @click="downloadDocument({ id: statusForm.id, fileName: statusForm.fileName })"
+              >
+                📥 Descargar para Evaluar
+              </button>
+            </div>
             <embed
               v-else
               :src="previewObjectUrl"

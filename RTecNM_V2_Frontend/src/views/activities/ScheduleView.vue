@@ -109,11 +109,36 @@ const canAddActivity = computed(() => {
   return !isProjectReadOnly.value
 })
 
-// Modal de agregar actividad
+// Modal de agregar / editar actividad
 const isModalOpen = ref(false)
+const editingActivityId = ref(null)
 const activityTitle = ref('')
-const plannedWeeks = ref(2)
+const startWeek = ref(1)
+const durationType = ref('weeks') // 'weeks' | 'days'
+const durationValue = ref(2)
 const isSubmitting = ref(false)
+
+const effectiveWeeks = computed(() => {
+  const val = Number(durationValue.value) || 1
+  if (durationType.value === 'days') {
+    return Math.max(1, Math.min(26, Math.ceil(val / 7)))
+  }
+  return Math.max(1, Math.min(26, val))
+})
+
+const effectiveDays = computed(() => {
+  const val = Number(durationValue.value) || 1
+  if (durationType.value === 'days') {
+    return Math.max(1, val)
+  }
+  return val * 7
+})
+
+const rangeSummaryText = computed(() => {
+  const start = Number(startWeek.value) || 1
+  const end = Math.min(26, start + effectiveWeeks.value - 1)
+  return `Semana ${start} a Semana ${end} (${effectiveWeeks.value} sem. / ~${effectiveDays.value} días)`
+})
 
 function showAlert(message, type = 'info') {
   alertMessage.value = message
@@ -136,20 +161,24 @@ const selectedProjectText = computed(() => {
   return `${title}${studentInfo}`
 })
 
-const projectStatusBadgeClass = computed(() => {
-  if (!currentProject.value) return 'tecnm-badge-neutral'
-  const st = String(currentProject.value.status || '').toLowerCase()
+const staffProjects = ref([])
+const staffSearchQuery = ref('')
+const isStudentListLoading = ref(false)
+
+function getBadgeClassForProject(p) {
+  if (!p) return 'tecnm-badge-neutral'
+  const st = String(p.status || '').toLowerCase()
   if (st === 'completed') return 'tecnm-badge-approved'
   if (st === 'in_progress') return 'tecnm-badge-pending'
   if (st === 'approved') return 'tecnm-badge-approved'
   if (st === 'pending' || st === 'under_review' || st === 'proposed') return 'tecnm-badge-pending'
   if (st === 'rejected' || st === 'cancelled') return 'tecnm-badge-rejected'
   return 'tecnm-badge-neutral'
-})
+}
 
-const projectStatusLabel = computed(() => {
-  if (!currentProject.value) return isStudent.value ? 'Sin anteproyecto' : 'No seleccionado'
-  const st = String(currentProject.value.status || '').toLowerCase()
+function getStatusLabelForProject(p) {
+  if (!p) return isStudent.value ? 'Sin anteproyecto' : 'No seleccionado'
+  const st = String(p.status || '').toLowerCase()
   if (st === 'completed') return 'Concluido / Acreditado'
   if (st === 'in_progress') return 'En Desarrollo'
   if (st === 'approved') return 'Aprobado'
@@ -158,7 +187,31 @@ const projectStatusLabel = computed(() => {
   if (st === 'rejected') return 'Con Observaciones'
   if (st === 'cancelled') return 'Cancelado'
   return st
+}
+
+const projectStatusBadgeClass = computed(() => getBadgeClassForProject(currentProject.value))
+const projectStatusLabel = computed(() => getStatusLabelForProject(currentProject.value))
+
+const filteredStaffProjects = computed(() => {
+  const q = staffSearchQuery.value.trim().toLowerCase()
+  if (!q) return staffProjects.value
+  return staffProjects.value.filter((p) => {
+    const student = (p.studentName || p.student_name || '').toLowerCase()
+    const ctrl = (p.studentControlNumber || p.student_control_number || '').toLowerCase()
+    const title = (p.title || p.name || '').toLowerCase()
+    const advisor = (p.advisorName || p.advisor_name || '').toLowerCase()
+    const career = (p.careerName || p.career_name || '').toLowerCase()
+    return student.includes(q) || ctrl.includes(q) || title.includes(q) || advisor.includes(q) || career.includes(q)
+  })
 })
+
+async function returnToStudentList() {
+  currentProject.value = null
+  activities.value = []
+  if (staffProjects.value.length === 0) {
+    await loadInitialProjectForStaff()
+  }
+}
 
 async function initSchedule() {
   if (route.query.projectId) {
@@ -211,18 +264,20 @@ const isEmptyState = ref(false)
 
 async function loadInitialProjectForStaff() {
   isLoading.value = true
+  isStudentListLoading.value = true
   errorMessage.value = ''
   isEmptyState.value = false
   try {
     const endpoint = isAdvisor.value
-      ? '/v1/projects/advisor/me?pageSize=50'
-      : '/v1/projects?pageSize=50'
+      ? '/v1/projects/advisor/me?pageSize=100'
+      : '/v1/projects?pageSize=100'
     const res = await apiClient.get(endpoint)
     const rawData = res.data
     let list = Array.isArray(rawData)
       ? rawData
       : (rawData && Array.isArray(rawData.items) ? rawData.items : [])
     list = list.filter((p) => (p.status || '').toLowerCase() !== 'draft')
+    staffProjects.value = list
 
     if (list.length === 0) {
       isEmptyState.value = true
@@ -231,17 +286,20 @@ async function loadInitialProjectForStaff() {
       return
     }
 
-    await selectProject(list[0])
+    currentProject.value = null
+    activities.value = []
   } catch (err) {
     if (err.response?.status === 404 || !err.response) {
       isEmptyState.value = true
     } else {
-      errorMessage.value = 'Error al consultar el anteproyecto asignado.'
+      errorMessage.value = 'Error al consultar anteproyectos asignados.'
     }
+    staffProjects.value = []
     currentProject.value = null
     activities.value = []
   } finally {
     isLoading.value = false
+    isStudentListLoading.value = false
   }
 }
 
@@ -380,18 +438,37 @@ function openAddModal() {
     showAlert('No se pueden agregar actividades a un proyecto concluido o en revisión.', 'warning')
     return
   }
+  editingActivityId.value = null
   activityTitle.value = ''
-  plannedWeeks.value = 2
+  startWeek.value = 1
+  durationType.value = 'weeks'
+  durationValue.value = 2
+  isModalOpen.value = true
+}
+
+function openEditModal(act) {
+  if (isProjectReadOnly.value) {
+    showAlert('No se puede modificar actividades de un proyecto concluido o en solo lectura.', 'warning')
+    return
+  }
+  editingActivityId.value = act.id
+  activityTitle.value = act.title || ''
+  startWeek.value = act.startWeek || 1
+  durationType.value = 'weeks'
+  durationValue.value = act.estimatedWeeks || 2
   isModalOpen.value = true
 }
 
 function closeModal() {
   isModalOpen.value = false
+  editingActivityId.value = null
   activityTitle.value = ''
-  plannedWeeks.value = 2
+  startWeek.value = 1
+  durationType.value = 'weeks'
+  durationValue.value = 2
 }
 
-async function handleAddActivity() {
+async function handleSaveActivity() {
   if (!currentProject.value?.id) {
     showAlert('Debe seleccionar un anteproyecto válido.', 'warning')
     return
@@ -403,22 +480,35 @@ async function handleAddActivity() {
   }
 
   isSubmitting.value = true
-  const activityNumber = activities.value.length + 1
 
   try {
-    const payload = {
-      projectId: currentProject.value.id,
-      activityNumber,
-      title,
-      plannedWeeks: plannedWeeks.value || 2,
+    if (editingActivityId.value) {
+      const payload = {
+        title,
+        startWeek: Number(startWeek.value) || 1,
+        estimatedWeeks: effectiveWeeks.value,
+        estimatedDays: effectiveDays.value,
+      }
+      await apiClient.put(`/v1/projects/${currentProject.value.id}/activities/${editingActivityId.value}`, payload)
+      showAlert('¡Actividad y semanas estimadas actualizadas correctamente!', 'success')
+    } else {
+      const activityNumber = activities.value.length + 1
+      const payload = {
+        projectId: currentProject.value.id,
+        activityNumber,
+        title,
+        startWeek: Number(startWeek.value) || 1,
+        estimatedWeeks: effectiveWeeks.value,
+        estimatedDays: effectiveDays.value,
+      }
+      await apiClient.post(`/v1/projects/${currentProject.value.id}/activities`, payload)
+      showAlert('¡Actividad agregada correctamente al cronograma!', 'success')
     }
 
-    await apiClient.post(`/v1/projects/${currentProject.value.id}/activities`, payload)
-    showAlert('¡Actividad agregada correctamente al cronograma!', 'success')
     closeModal()
     await loadSchedule(currentProject.value.id)
   } catch (err) {
-    const msg = err.response?.data?.message || 'Error al agregar la actividad.'
+    const msg = err.response?.data?.message || 'Error al guardar la actividad en el cronograma.'
     showAlert(msg, 'danger')
   } finally {
     isSubmitting.value = false
@@ -436,17 +526,42 @@ onMounted(() => {
     <div class="tecnm-actions-bar">
       <div>
         <h1 class="tecnm-page-title">Cronograma de Actividades (16 - 26 Semanas)</h1>
-        <p class="tecnm-page-subtitle">Planeación y seguimiento semanal de Residencia Profesional (Mínimo 16 semanas / 500 hrs)</p>
+        <p class="tecnm-page-subtitle">
+          {{ !isStudent && !currentProject
+              ? (authStore.isAdmin ? 'Supervisión global de cronogramas de residentes' : (isAdvisor ? 'Seguimiento de cronogramas de tus alumnos asignados' : 'Supervisión de cronogramas de la carrera'))
+              : 'Planeación y seguimiento semanal de Residencia Profesional (Mínimo 16 semanas / 500 hrs)' }}
+        </p>
       </div>
-      <button
-        v-if="canAddActivity"
-        id="addActivityBtn"
-        type="button"
-        class="tecnm-btn tecnm-btn-primary"
-        @click="openAddModal"
-      >
-        + Nueva Actividad
-      </button>
+      <div class="tecnm-page-actions">
+        <button
+          v-if="!isStudent && currentProject"
+          type="button"
+          class="tecnm-btn tecnm-btn-secondary"
+          @click="returnToStudentList"
+        >
+          ⬅️ Cambiar Alumno
+        </button>
+        <button
+          v-if="!isStudent"
+          type="button"
+          class="tecnm-btn tecnm-btn-secondary"
+          @click="openProjectPicker"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+          </svg>
+          <span>Buscar Alumno</span>
+        </button>
+        <button
+          v-if="canAddActivity"
+          id="addActivityBtn"
+          type="button"
+          class="tecnm-btn tecnm-btn-primary"
+          @click="openAddModal"
+        >
+          + Nueva Actividad
+        </button>
+      </div>
     </div>
 
     <!-- Banner Contextual según Estado del Proyecto (Solo para Estudiante) -->
@@ -518,12 +633,117 @@ onMounted(() => {
       </button>
     </div>
 
-    <!-- Tarjeta Principal con Matriz de 26 Semanas -->
-    <div class="tecnm-card">
+    <!-- 1. VISTA LISTA DE ALUMNOS (PARA STAFF / DOCENTES CUANDO NO HAY ALUMNO SELECCIONADO) -->
+    <div v-if="!isStudent && !currentProject" class="tecnm-card">
+      <div class="tecnm-card-header tecnm-d-flex tecnm-justify-between tecnm-align-center">
+        <div>
+          <h3 class="tecnm-card-title">
+            {{ authStore.isAdmin ? 'Directorio de Alumnos Residentes' : (isAdvisor ? 'Mis Alumnos Residentes Asignados' : 'Alumnos Residentes de la Carrera') }}
+          </h3>
+          <p class="tecnm-card-subtitle" style="margin: 0.25rem 0 0; font-size: 0.85rem; color: #64748b;">
+            Selecciona a un alumno para consultar, revisar o dar seguimiento a su cronograma de 26 semanas.
+          </p>
+        </div>
+      </div>
+
+      <div class="tecnm-card-toolbar">
+        <div style="flex: 1; max-width: 420px;">
+          <input
+            v-model="staffSearchQuery"
+            type="text"
+            class="tecnm-form-control tecnm-form-control-sm"
+            placeholder="Filtrar por alumno, no. control, carrera o anteproyecto..."
+          />
+        </div>
+        <div class="tecnm-toolbar-actions">
+          <button
+            type="button"
+            class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+            @click="openProjectPicker"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z" />
+            </svg>
+            <span>Buscar en Catálogo Global</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="tecnm-card-body">
+        <div class="tecnm-table-responsive">
+          <table class="tecnm-table tecnm-table-striped">
+            <thead>
+              <tr>
+                <th>No. Control</th>
+                <th>Estudiante</th>
+                <th>Carrera</th>
+                <th>Anteproyecto</th>
+                <th v-if="authStore.isAdmin">Asesor</th>
+                <th>Estado</th>
+                <th class="tecnm-th-actions">Acción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="isStudentListLoading">
+                <td :colspan="authStore.isAdmin ? 7 : 6" class="tecnm-table-empty">
+                  Cargando alumnos asignados...
+                </td>
+              </tr>
+              <tr v-else-if="filteredStaffProjects.length === 0">
+                <td :colspan="authStore.isAdmin ? 7 : 6" class="tecnm-table-empty">
+                  {{ staffSearchQuery ? 'No se encontraron alumnos que coincidan con la búsqueda.' : (isAdvisor ? 'No tienes alumnos residentes asignados con anteproyecto activo actualmente.' : 'No se registran alumnos con anteproyectos activos.') }}
+                </td>
+              </tr>
+              <tr
+                v-for="p in filteredStaffProjects"
+                v-else
+                :key="p.id"
+              >
+                <td><strong>{{ p.studentControlNumber || p.student_control_number || '—' }}</strong></td>
+                <td>{{ p.studentName || p.student_name || 'Estudiante' }}</td>
+                <td>{{ p.careerName || p.career_name || '—' }}</td>
+                <td>
+                  <div style="font-weight: 500;">{{ p.title || p.name || 'Anteproyecto' }}</div>
+                  <div v-if="p.companyName || p.company_name" style="font-size: 0.75rem; color: #64748b;">
+                    🏢 {{ p.companyName || p.company_name }}
+                  </div>
+                </td>
+                <td v-if="authStore.isAdmin">{{ p.advisorName || p.advisor_name || 'Sin asesor' }}</td>
+                <td>
+                  <span class="tecnm-badge" :class="getBadgeClassForProject(p)">
+                    {{ getStatusLabelForProject(p) }}
+                  </span>
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="tecnm-btn tecnm-btn-primary tecnm-btn-sm"
+                    @click="selectProject(p)"
+                  >
+                    Ver Cronograma &rarr;
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2. TARJETA PRINCIPAL CON MATRIZ DE 26 SEMANAS (CUANDO HAY PROYECTO SELECCIONADO O ES ESTUDIANTE) -->
+    <div v-else class="tecnm-card">
       <div class="tecnm-card-header tecnm-d-flex tecnm-justify-between tecnm-align-center">
         <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2 tecnm-flex-wrap">
           <h3 class="tecnm-card-title">Matriz de Avance Semanal</h3>
           <div id="projectSearchContainer" class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+            <button
+              v-if="!isStudent"
+              type="button"
+              class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+              @click="returnToStudentList"
+            >
+              ⬅️ Cambiar Alumno
+            </button>
             <button
               v-if="!isStudent"
               id="searchProjectBtn"
@@ -639,7 +859,21 @@ onMounted(() => {
                 :key="act.id"
               >
                 <td><strong>{{ act.activityNumber }}</strong></td>
-                <td class="act-title-col">{{ act.title }}</td>
+                <td class="act-title-col">
+                  <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;">
+                    <span>{{ act.title }}</span>
+                    <button
+                      v-if="isStudent && !isProjectReadOnly"
+                      type="button"
+                      class="tecnm-btn tecnm-btn-secondary tecnm-btn-xs"
+                      style="padding: 2px 6px; font-size: 0.75rem; white-space: nowrap;"
+                      title="Editar actividad y duración estimada"
+                      @click.stop="openEditModal(act)"
+                    >
+                      ✏️ Editar
+                    </button>
+                  </div>
+                </td>
                 <td
                   v-for="w in TOTAL_WEEKS"
                   :key="w"
@@ -663,7 +897,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- Modal Registrar Nueva Actividad -->
+    <!-- Modal Registrar / Editar Actividad -->
     <div
       id="createActivityModal"
       class="modal-backdrop"
@@ -673,7 +907,9 @@ onMounted(() => {
     >
       <div class="modal-card">
         <div class="tecnm-modal-header">
-          <h3 class="tecnm-modal-title">Agregar Nueva Actividad al Cronograma</h3>
+          <h3 class="tecnm-modal-title">
+            {{ editingActivityId ? 'Editar Actividad del Cronograma' : 'Agregar Nueva Actividad al Cronograma' }}
+          </h3>
           <button
             id="closeActivityModalBtn"
             type="button"
@@ -685,7 +921,7 @@ onMounted(() => {
           </button>
         </div>
 
-        <form id="activityForm" @submit.prevent="handleAddActivity">
+        <form id="activityForm" @submit.prevent="handleSaveActivity">
           <div class="tecnm-form-group">
             <label for="activityTitleInput" class="tecnm-label">Descripción de la Actividad *</label>
             <input
@@ -698,16 +934,53 @@ onMounted(() => {
             />
           </div>
 
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+            <div class="tecnm-form-group">
+              <label for="startWeekSelect" class="tecnm-label">Semana de Inicio</label>
+              <select
+                id="startWeekSelect"
+                v-model.number="startWeek"
+                class="tecnm-form-control"
+              >
+                <option v-for="w in 26" :key="w" :value="w">
+                  Semana {{ w }}
+                </option>
+              </select>
+            </div>
+
+            <div class="tecnm-form-group">
+              <label for="durationTypeSelect" class="tecnm-label">Unidad de Estimación</label>
+              <select
+                id="durationTypeSelect"
+                v-model="durationType"
+                class="tecnm-form-control"
+              >
+                <option value="weeks">Semanas</option>
+                <option value="days">Días hábiles</option>
+              </select>
+            </div>
+          </div>
+
           <div class="tecnm-form-group">
-            <label for="plannedWeeksInput" class="tecnm-label">Semanas Estimadas de Duración</label>
+            <label for="durationValueInput" class="tecnm-label">
+              {{ durationType === 'weeks' ? 'Número de Semanas Estimadas' : 'Número de Días Estimados' }}
+            </label>
             <input
-              id="plannedWeeksInput"
-              v-model.number="plannedWeeks"
+              id="durationValueInput"
+              v-model.number="durationValue"
               type="number"
               class="tecnm-form-control"
-              min="1"
-              max="26"
+              :min="1"
+              :max="durationType === 'weeks' ? 26 : 180"
+              required
             />
+          </div>
+
+          <div style="background-color: var(--color-surface-subtle, #f8fafc); border: 1px solid var(--color-border, #e2e8f0); border-radius: 6px; padding: 0.75rem 1rem; margin-bottom: 1.25rem; font-size: 0.85rem;">
+            <strong style="color: var(--color-text, #334155);">Rango programado:</strong>
+            <span style="color: var(--color-primary, #0284c7); margin-left: 0.5rem; font-weight: 600;">
+              {{ rangeSummaryText }}
+            </span>
           </div>
 
           <div class="tecnm-modal-footer">
@@ -725,7 +998,7 @@ onMounted(() => {
               class="tecnm-btn tecnm-btn-primary"
               :disabled="isSubmitting"
             >
-              {{ isSubmitting ? 'Guardando...' : 'Guardar Actividad' }}
+              {{ isSubmitting ? 'Guardando...' : (editingActivityId ? 'Actualizar Actividad' : 'Guardar Actividad') }}
             </button>
           </div>
         </form>

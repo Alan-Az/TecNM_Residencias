@@ -13,14 +13,18 @@ public record CreateAdvisorySessionDto(
     long AdvisorId,
     DateTime? SessionDate,
     string TopicsCovered,
-    string? StudentAgreements
+    string? StudentAgreements,
+    bool StudentAttended = true,
+    long? DocumentId = null
 );
 
 public record UpdateAdvisorySessionDto(
     long AdvisorId,
     DateTime? SessionDate,
     string TopicsCovered,
-    string? StudentAgreements
+    string? StudentAgreements,
+    bool StudentAttended = true,
+    long? DocumentId = null
 );
 
 public record EvaluationResponseDto(
@@ -63,5 +67,7 @@ public record AdvisorySessionResponseDto(
     string ReviewStatus = "pending",
     string? ReviewNotes = null,
     DateTime? ReviewedAt = null,
-    long? ReviewedBy = null
+    long? ReviewedBy = null,
+    bool StudentAttended = true,
+    long? DocumentId = null
 );

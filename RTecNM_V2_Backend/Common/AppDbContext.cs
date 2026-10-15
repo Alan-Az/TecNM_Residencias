@@ -10,6 +10,7 @@ using TecNM.Residency.Projects;
 using TecNM.Residency.Students;
 using TecNM.Residency.Careers;
 using TecNM.Residency.Notifications;
+using TecNM.Residency.OfficialTemplates;
 
 namespace TecNM.Residency.Common;
 
@@ -43,6 +44,8 @@ public class AppDbContext : DbContext
     public DbSet<UserCareer> UserCareers => Set<UserCareer>();
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<UserNotificationRead> UserNotificationReads => Set<UserNotificationRead>();
+    public DbSet<OfficialTemplate> OfficialTemplates => Set<OfficialTemplate>();
+    public DbSet<OfficialTemplateVersion> OfficialTemplateVersions => Set<OfficialTemplateVersion>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -74,6 +77,8 @@ public class AppDbContext : DbContext
         modelBuilder.ApplyConfiguration(new AdvisorDepartmentConfiguration());
         modelBuilder.ApplyConfiguration(new NotificationConfiguration());
         modelBuilder.ApplyConfiguration(new UserNotificationReadConfiguration());
+        modelBuilder.ApplyConfiguration(new OfficialTemplateConfiguration());
+        modelBuilder.ApplyConfiguration(new OfficialTemplateVersionConfiguration());
     }
 }
 

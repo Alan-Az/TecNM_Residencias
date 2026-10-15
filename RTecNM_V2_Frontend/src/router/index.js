@@ -167,6 +167,16 @@ const routes = [
     },
   },
   {
+    path: '/official-templates',
+    name: 'OfficialTemplates',
+    component: () => import('@/views/templates/OfficialTemplatesView.vue'),
+    meta: {
+      requiresAuth: true,
+      title: 'Formatos Oficiales y Plantillas - Sistema de Residencias',
+      navActive: 'official-templates',
+    },
+  },
+  {
     path: '/admin/reports',
     name: 'AdminReports',
     component: () => import('@/views/admin/ReportsView.vue'),

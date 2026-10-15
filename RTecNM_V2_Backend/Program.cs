@@ -18,19 +18,20 @@ using TecNM.Residency.Projects;
 using TecNM.Residency.Notifications;
 using TecNM.Residency.Searches;
 using TecNM.Residency.Students;
+using TecNM.Residency.OfficialTemplates;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Configuración de límites de tamaño para subida de archivos (15MB de buffer para archivos de hasta 5MB)
+// Configuración de límites de tamaño para subida de archivos (30MB de buffer para formatos y documentos)
 builder.WebHost.ConfigureKestrel(serverOptions =>
 {
-    serverOptions.Limits.MaxRequestBodySize = 15 * 1024 * 1024;
+    serverOptions.Limits.MaxRequestBodySize = 30 * 1024 * 1024;
 });
 
 builder.Services.Configure<Microsoft.AspNetCore.Http.Features.FormOptions>(options =>
 {
-    options.MultipartBodyLengthLimit = 15 * 1024 * 1024;
-    options.ValueLengthLimit = 15 * 1024 * 1024;
+    options.MultipartBodyLengthLimit = 30 * 1024 * 1024;
+    options.ValueLengthLimit = 30 * 1024 * 1024;
 });
 
 builder.Services.AddControllers();
@@ -105,6 +106,8 @@ builder.Services.AddScoped<ICareerRepository, CareerRepository>();
 builder.Services.AddScoped<ICareerService, CareerService>();
 builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IOfficialTemplateRepository, OfficialTemplateRepository>();
+builder.Services.AddScoped<IOfficialTemplateService, OfficialTemplateService>();
 
 // Email Notification Services
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));

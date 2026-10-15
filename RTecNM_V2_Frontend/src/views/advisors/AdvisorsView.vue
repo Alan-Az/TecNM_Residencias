@@ -9,6 +9,9 @@ import TecnmPagination from '@/components/common/TecnmPagination.vue'
 import TecnmBadge from '@/components/common/TecnmBadge.vue'
 import TecnmAutocomplete from '@/components/common/TecnmAutocomplete.vue'
 import AdvisorWorkloadModal from '@/components/advisors/AdvisorWorkloadModal.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
+import { useTableSort } from '@/composables/useTableSort'
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -19,8 +22,14 @@ const { open: openSearch } = useGlobalSearch()
 const advisors = ref([])
 const includeInactive = ref(false)
 const selectedDepartmentFilter = ref('all')
-const sortBy = ref('FullName')
-const sortDir = ref('asc')
+const { sortBy, sortDir, toggleSort, getSortIcon, isSortActive } = useTableSort(
+  'FullName',
+  'asc',
+  () => {
+    pageNumber.value = 1
+    loadAdvisors({ silent: true })
+  }
+)
 const searchTerm = ref('')
 const isLoading = ref(false)
 
@@ -228,13 +237,9 @@ async function loadAdvisors({ silent = false } = {}) {
   }
 }
 
-let searchTimer = null
-function onSearchInput() {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    pageNumber.value = 1
-    loadAdvisors()
-  }, 300)
+function onSearchSubmit() {
+  pageNumber.value = 1
+  loadAdvisors()
 }
 
 function handleOpenSearch() {
@@ -258,16 +263,7 @@ function onInactiveToggleChange() {
   loadAdvisors()
 }
 
-function handleSort(col) {
-  if (sortBy.value.toLowerCase() === col.toLowerCase()) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = col
-    sortDir.value = 'asc'
-  }
-  pageNumber.value = 1
-  loadAdvisors({ silent: true })
-}
+const handleSort = toggleSort
 
 function getSortClass(col) {
   if (sortBy.value !== col) return 'tecnm-sort-th'
@@ -516,35 +512,31 @@ onMounted(() => {
       <div class="tecnm-card-header">
         <h3 class="tecnm-card-title">Asesores Registrados</h3>
       </div>
-      <div class="tecnm-card-toolbar">
-        <div class="tecnm-form-group tecnm-mb-0 tecnm-search-box" style="margin-bottom: 0; flex: 1; max-width: 420px;">
-          <input
-            id="advisorSearchInput"
-            v-model="searchTerm"
-            type="search"
-            class="tecnm-form-control"
-            placeholder="Buscar por nombre, título o teléfono..."
-            @input="onSearchInput"
-          />
-        </div>
+      <TecnmTableToolbar
+        v-model="searchTerm"
+        search-placeholder="Buscar por nombre, título o teléfono..."
+        search-id="advisorSearchInput"
+        @search="onSearchSubmit"
+      >
+        <template #filters>
+          <div v-if="!authStore.isCareerHead" class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label for="advisorDepartmentFilter" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Departamento:</label>
+            <select
+              id="advisorDepartmentFilter"
+              v-model="selectedDepartmentFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 220px; font-size: 0.85rem;"
+              @change="pageNumber = 1; loadAdvisors()"
+            >
+              <option value="all">Todos los Departamentos</option>
+              <option v-for="(name, id) in DEPARTMENTS" :key="id" :value="id">
+                {{ name }}
+              </option>
+            </select>
+          </div>
+        </template>
 
-        <div v-if="!authStore.isCareerHead" class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-          <label for="advisorDepartmentFilter" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Departamento:</label>
-          <select
-            id="advisorDepartmentFilter"
-            v-model="selectedDepartmentFilter"
-            class="tecnm-form-control"
-            style="min-width: 220px; font-size: 0.85rem;"
-            @change="pageNumber = 1; loadAdvisors()"
-          >
-            <option value="all">Todos los Departamentos</option>
-            <option v-for="(name, id) in DEPARTMENTS" :key="id" :value="id">
-              {{ name }}
-            </option>
-          </select>
-        </div>
-
-        <div class="tecnm-toolbar-actions">
+        <template #actions>
           <label v-if="!authStore.isCareerHead" class="tecnm-switch-label">
             <span class="tecnm-switch">
               <input
@@ -557,16 +549,14 @@ onMounted(() => {
             </span>
             Mostrar inactivos
           </label>
-          <button
+          <TecnmExportButton
             id="exportAdvisorsBtn"
-            type="button"
-            class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
-            @click="handleExportPdf"
-          >
-            Exportar PDF
-          </button>
-        </div>
-      </div>
+            formats="pdf"
+            :loading="isExportingPdf"
+            @export="handleExportPdf"
+          />
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body">
         <div class="tecnm-table-responsive">
@@ -575,65 +565,65 @@ onMounted(() => {
               <tr>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('FullName')"
+                  @click="toggleSort('FullName')"
                 >
                   Nombre Completo
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'fullname' }">
-                    {{ sortBy.toLowerCase() === 'fullname' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('FullName') }">
+                    {{ getSortIcon('FullName') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('AdvisorType')"
+                  @click="toggleSort('AdvisorType')"
                 >
                   Tipo de Asesor
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'advisortype' }">
-                    {{ sortBy.toLowerCase() === 'advisortype' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('AdvisorType') }">
+                    {{ getSortIcon('AdvisorType') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('Title')"
+                  @click="toggleSort('Title')"
                 >
                   Título / Grado
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'title' }">
-                    {{ sortBy.toLowerCase() === 'title' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Title') }">
+                    {{ getSortIcon('Title') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('DepartmentId')"
+                  @click="toggleSort('DepartmentId')"
                 >
                   Departamento
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'departmentid' }">
-                    {{ sortBy.toLowerCase() === 'departmentid' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('DepartmentId') }">
+                    {{ getSortIcon('DepartmentId') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('Phone')"
+                  @click="toggleSort('Phone')"
                 >
                   Teléfono
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'phone' }">
-                    {{ sortBy.toLowerCase() === 'phone' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Phone') }">
+                    {{ getSortIcon('Phone') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('AssignedStudentsCount')"
+                  @click="toggleSort('AssignedStudentsCount')"
                 >
                   Volumen Académico
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'assignedstudentscount' }">
-                    {{ sortBy.toLowerCase() === 'assignedstudentscount' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('AssignedStudentsCount') }">
+                    {{ getSortIcon('AssignedStudentsCount') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('IsActive')"
+                  @click="toggleSort('IsActive')"
                 >
                   Estado
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'isactive' }">
-                    {{ sortBy.toLowerCase() === 'isactive' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('IsActive') }">
+                    {{ getSortIcon('IsActive') }}
                   </span>
                 </th>
                 <th class="tecnm-th-actions">Acciones</th>

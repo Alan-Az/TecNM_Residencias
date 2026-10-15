@@ -59,6 +59,45 @@ public class CompanyRepository : ICompanyRepository
         return await q.ToPaginatedAsync(query.PageNumber, query.PageSize);
     }
 
+    public async Task<List<Company>> GetAllForExportAsync(string? search, string? sector, string? sortBy, string? sortDir, bool includeInactive = false)
+    {
+        IQueryable<Company> q = _context.Companies
+            .Include(c => c.AgreementCompanies)
+                .ThenInclude(ac => ac.Agreement)
+            .AsNoTracking();
+
+        if (!includeInactive)
+        {
+            q = q.Where(c => c.IsActive);
+        }
+
+        if (!string.IsNullOrWhiteSpace(sector))
+        {
+            var secTerm = sector.Trim().ToLowerInvariant();
+            q = q.Where(c => c.Sector != null && c.Sector.ToLower() == secTerm);
+        }
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var term = search.Trim().ToLowerInvariant();
+            q = q.Where(c => c.Name.ToLower().Contains(term)
+                             || (c.LegalName != null && c.LegalName.ToLower().Contains(term))
+                             || (c.TradeName != null && c.TradeName.ToLower().Contains(term))
+                             || (c.Rfc != null && c.Rfc.ToLower().Contains(term))
+                             || (c.Sector != null && c.Sector.ToLower().Contains(term))
+                             || (c.City != null && c.City.ToLower().Contains(term))
+                             || (c.State != null && c.State.ToLower().Contains(term))
+                             || (c.ContactName != null && c.ContactName.ToLower().Contains(term))
+                             || (c.ContactEmail != null && c.ContactEmail.ToLower().Contains(term)));
+        }
+
+        q = q.ApplySort(sortBy, sortDir,
+            new[] { "Name", "LegalName", "TradeName", "Rfc", "Sector", "ContactName", "CreatedAt", "IsActive", "HasAgreement" },
+            "Name", defaultDescending: false);
+
+        return await q.ToListAsync();
+    }
+
     public async Task<IEnumerable<Company>> GetAllAsync(bool includeInactive = false, bool onlyWithActiveAgreement = false)
     {
         var query = _context.Companies

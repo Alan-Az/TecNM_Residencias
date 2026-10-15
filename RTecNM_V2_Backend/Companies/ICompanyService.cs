@@ -6,6 +6,7 @@ public interface ICompanyService
 {
     Task<Result<PaginatedResult<CompanyResponseDto>>> GetPagedAsync(PaginationQuery query, string? status, bool includeInactive = false, bool onlyWithActiveAgreement = false);
     Task<Result<IEnumerable<CompanyResponseDto>>> GetAllAsync(bool includeInactive = false, bool onlyWithActiveAgreement = false);
+    Task<Result<byte[]>> ExportPdfAsync(string? search = null, string? sector = null, string? sortBy = null, string? sortDir = null, bool includeInactive = false);
     Task<Result<CompanyResponseDto>> GetByIdAsync(long id);
     Task<Result<CompanyResponseDto>> CreateAsync(CreateCompanyDto dto, long? createdByUserId = null);
     Task<Result<CompanyResponseDto>> UpdateAsync(long id, UpdateCompanyDto dto, long? updatedByUserId = null);

@@ -56,6 +56,30 @@ export const useAuthStore = defineStore('auth', () => {
     return currentRole.value === 'advisor'
   })
 
+  const isStudent = computed(() => {
+    if (!currentRole.value) return false
+    return (
+      currentRole.value === 'student' ||
+      (hasRole('student') &&
+        !hasRole(
+          'admin',
+          'departmenthead',
+          'advisor',
+          'vinculacion',
+          'director',
+          'coordinadora',
+          'coordinator',
+          'jefecarrera',
+          'careerhead',
+          'academic'
+        ))
+    )
+  })
+
+  const isStaff = computed(() => {
+    return !isStudent.value && Boolean(currentRole.value)
+  })
+
   const userAdvisorId = computed(() => {
     return user.value?.advisorId ?? user.value?.advisor_id ?? null
   })
@@ -331,6 +355,8 @@ export const useAuthStore = defineStore('auth', () => {
     isCoordinator,
     isCareerHead,
     isAdvisor,
+    isStudent,
+    isStaff,
     userAdvisorId,
     userCareerId,
     userCareerIds,

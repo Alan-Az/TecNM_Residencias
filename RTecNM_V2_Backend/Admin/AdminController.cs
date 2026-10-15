@@ -58,6 +58,21 @@ public class AdminController : ControllerBase
         return Ok(result.Data);
     }
 
+    [HttpGet("reports/releasable/export")]
+    [Authorize(Roles = "admin,departmenthead,director,coordinadora,coordinator")]
+    public async Task<IActionResult> ExportReleasableProjects(
+        [FromQuery] string? search,
+        [FromQuery] string? sortBy,
+        [FromQuery] string? sortDir,
+        [FromQuery] long? careerId = null,
+        [FromQuery] long? advisorId = null)
+    {
+        var result = await _reportService.ExportReleasableProjectsPdfAsync(search, sortBy, sortDir, careerId, advisorId);
+        return result.IsSuccess
+            ? File(result.Data!, "application/pdf", "proyectos_liberables_tecnm.pdf")
+            : BadRequest(new { message = result.ErrorMessage });
+    }
+
     [HttpPost("reports/release-letter/{projectId:long}")]
     [Authorize(Roles = "admin,departmenthead")]
     public async Task<IActionResult> IssueReleaseLetter(long projectId)

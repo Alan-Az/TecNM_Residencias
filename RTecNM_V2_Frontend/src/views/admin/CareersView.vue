@@ -5,6 +5,8 @@ import { useConfirm } from '@/composables/useConfirm'
 import apiClient from '@/services/api'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
 import TecnmKpiCard from '@/components/common/TecnmKpiCard.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import { useTableSort } from '@/composables/useTableSort'
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -20,8 +22,14 @@ const totalPages = ref(0)
 
 const searchTerm = ref('')
 const statusFilter = ref('all') // 'all' | 'active' | 'inactive'
-const sortBy = ref('Name')
-const sortDir = ref('asc')
+const { sortBy, sortDir, toggleSort, getSortIcon, isSortActive } = useTableSort(
+  'Name',
+  'asc',
+  () => {
+    pageNumber.value = 1
+    loadCareers({ silent: true })
+  }
+)
 
 const alertMessage = ref('')
 const alertType = ref('success')
@@ -108,16 +116,7 @@ function handlePageChange(newPage) {
   loadCareers()
 }
 
-function handleSort(col) {
-  if (sortBy.value.toLowerCase() === col.toLowerCase()) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = col
-    sortDir.value = 'asc'
-  }
-  pageNumber.value = 1
-  loadCareers()
-}
+const handleSort = toggleSort
 
 function openCreateModal() {
   isEditing.value = false
@@ -269,68 +268,58 @@ onMounted(() => {
         <h3 class="tecnm-card-title">Catálogo Oficial de Carreras</h3>
       </div>
 
-      <!-- Barra de Búsqueda y Filtros -->
-      <div class="tecnm-card-toolbar" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; justify-content: space-between;">
-        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; flex: 1;">
-          <div class="tecnm-form-group tecnm-mb-0 tecnm-search-box" style="margin-bottom: 0; min-width: 280px; flex: 1;">
-            <input
-              id="careerSearchInput"
-              v-model="searchTerm"
-              type="text"
-              class="tecnm-form-control"
-              placeholder="Buscar por código, nombre o acrónimo..."
-              @keyup.enter="handleSearch"
-            />
-          </div>
-
+      <!-- Barra de Búsqueda y Filtros Estandarizada -->
+      <TecnmTableToolbar
+        v-model="searchTerm"
+        search-placeholder="Buscar por código, nombre o acrónimo..."
+        search-id="careerSearchInput"
+        @search="pageNumber = 1; loadCareers()"
+      >
+        <template #filters>
           <div style="min-width: 160px;">
-            <select v-model="statusFilter" class="tecnm-form-control" @change="handleSearch">
+            <select v-model="statusFilter" class="tecnm-form-control tecnm-filter-select" @change="pageNumber = 1; loadCareers()">
               <option value="all">Todas las carreras</option>
               <option value="active">Solo activas</option>
               <option value="inactive">Solo inactivas</option>
             </select>
           </div>
-
-          <button type="button" class="tecnm-btn tecnm-btn-secondary" @click="handleSearch">
-            Buscar
-          </button>
-        </div>
-      </div>
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body">
         <div class="tecnm-table-responsive">
           <table class="tecnm-table">
             <thead>
               <tr>
-                <th class="tecnm-th-sortable" style="width: 80px;" @click="handleSort('Id')">
+                <th class="tecnm-th-sortable" style="width: 80px;" @click="toggleSort('Id')">
                   ID
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'id' }">
-                    {{ sortBy.toLowerCase() === 'id' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Id') }">
+                    {{ getSortIcon('Id') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" style="width: 110px;" @click="handleSort('Code')">
+                <th class="tecnm-th-sortable" style="width: 110px;" @click="toggleSort('Code')">
                   Código
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'code' }">
-                    {{ sortBy.toLowerCase() === 'code' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Code') }">
+                    {{ getSortIcon('Code') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('Name')">
+                <th class="tecnm-th-sortable" @click="toggleSort('Name')">
                   Nombre de la Carrera
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'name' }">
-                    {{ sortBy.toLowerCase() === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Name') }">
+                    {{ getSortIcon('Name') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" style="width: 130px;" @click="handleSort('Acronym')">
+                <th class="tecnm-th-sortable" style="width: 130px;" @click="toggleSort('Acronym')">
                   Acrónimo
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'acronym' }">
-                    {{ sortBy.toLowerCase() === 'acronym' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Acronym') }">
+                    {{ getSortIcon('Acronym') }}
                   </span>
                 </th>
                 <th>Departamento Asignado</th>
-                <th class="tecnm-th-sortable" style="width: 120px; text-align: center;" @click="handleSort('IsActive')">
+                <th class="tecnm-th-sortable" style="width: 120px; text-align: center;" @click="toggleSort('IsActive')">
                   Estado
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'isactive' }">
-                    {{ sortBy.toLowerCase() === 'isactive' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('IsActive') }">
+                    {{ getSortIcon('IsActive') }}
                   </span>
                 </th>
                 <th style="width: 160px; text-align: right;">Acciones</th>

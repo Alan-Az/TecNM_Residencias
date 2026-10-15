@@ -88,6 +88,31 @@ public class ReportGeneratorService : IReportGeneratorService
             );
         }).ToList();
 
+        if (!string.IsNullOrWhiteSpace(query.Search))
+        {
+            var term = query.Search.Trim().ToLowerInvariant();
+            list = list.Where(p =>
+                p.Title.ToLower().Contains(term) ||
+                p.StudentName.ToLower().Contains(term) ||
+                p.StudentControlNumber.ToLower().Contains(term) ||
+                p.AdvisorName.ToLower().Contains(term)
+            ).ToList();
+        }
+
+        var isDesc = string.Equals(query.SortDir, "desc", StringComparison.OrdinalIgnoreCase);
+        var sortBy = (query.SortBy ?? "Title").ToLowerInvariant();
+
+        list = sortBy switch
+        {
+            "title" => isDesc ? list.OrderByDescending(p => p.Title).ToList() : list.OrderBy(p => p.Title).ToList(),
+            "studentname" => isDesc ? list.OrderByDescending(p => p.StudentName).ToList() : list.OrderBy(p => p.StudentName).ToList(),
+            "studentcontrolnumber" or "controlnumber" => isDesc ? list.OrderByDescending(p => p.StudentControlNumber).ToList() : list.OrderBy(p => p.StudentControlNumber).ToList(),
+            "advisorname" => isDesc ? list.OrderByDescending(p => p.AdvisorName).ToList() : list.OrderBy(p => p.AdvisorName).ToList(),
+            "averagescore" or "score" => isDesc ? list.OrderByDescending(p => p.AverageScore).ToList() : list.OrderBy(p => p.AverageScore).ToList(),
+            "iseligible" => isDesc ? list.OrderByDescending(p => p.IsEligible).ToList() : list.OrderBy(p => p.IsEligible).ToList(),
+            _ => isDesc ? list.OrderByDescending(p => p.Title).ToList() : list.OrderBy(p => p.Title).ToList()
+        };
+
         var totalCount = list.Count;
         var items = list
             .Skip((query.PageNumber - 1) * query.PageSize)
@@ -96,6 +121,39 @@ public class ReportGeneratorService : IReportGeneratorService
 
         var result = PaginatedResult<ReleasableProjectDto>.Create(items, totalCount, query.PageNumber, query.PageSize);
         return Result<PaginatedResult<ReleasableProjectDto>>.Success(result);
+    }
+
+    public async Task<Result<byte[]>> ExportReleasableProjectsPdfAsync(string? search = null, string? sortBy = null, string? sortDir = null, long? careerId = null, long? advisorId = null)
+    {
+        var dummyQuery = new PaginationQuery
+        {
+            PageNumber = 1,
+            PageSize = 5000,
+            Search = search,
+            SortBy = sortBy,
+            SortDir = sortDir
+        };
+
+        var pagedResult = await GetReleasableProjectsAsync(dummyQuery, careerId, advisorId);
+        var items = pagedResult.Data?.Items ?? new List<ReleasableProjectDto>();
+
+        var definition = new PdfTableDefinition
+        {
+            Title = "Proyectos Elegibles para Liberación de Residencia Profesional - TecNM",
+            Headers = new List<string> { "Folio", "Proyecto", "Estudiante", "No. Control", "Asesor", "Calificación Promedio", "Elegible" },
+            Rows = items.Select(p => new List<string>
+            {
+                p.ProjectId.ToString(),
+                p.Title,
+                p.StudentName,
+                p.StudentControlNumber,
+                p.AdvisorName,
+                $"{p.AverageScore:F2}",
+                p.IsEligible ? "Sí (Liberable)" : "No (Promedio < 70)"
+            }).ToList()
+        };
+
+        return Result<byte[]>.Success(PdfExportService.GenerateTablePdf(definition));
     }
 
     public async Task<Result<DocumentDto>> IssueReleaseLetterAsync(long projectId)

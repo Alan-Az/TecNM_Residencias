@@ -8,6 +8,9 @@ import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import apiClient, { getUploadErrorMessage } from '@/services/api'
 import TecnmBadge from '@/components/common/TecnmBadge.vue'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
+import { useTableSort } from '@/composables/useTableSort'
 
 const route = useRoute()
 const authStore = useAuthStore()
@@ -51,8 +54,15 @@ const totalCount = ref(0)
 const totalPages = ref(0)
 const searchTerm = ref('')
 const includeInactive = ref(false)
-const sortBy = ref('Name')
-const sortDir = ref('asc')
+const { sortBy, sortDir, toggleSort, getSortIcon, isSortActive } = useTableSort(
+  'Name',
+  'asc',
+  () => {
+    pageNumber.value = 1
+    loadCompanies({ silent: true })
+  }
+)
+const isExportingPdf = ref(false)
 
 // Notificaciones
 const alertMessage = ref('')
@@ -168,16 +178,35 @@ async function handleImportSubmit() {
   }
 }
 
-function handleSort(field) {
-  if (sortBy.value.toLowerCase() === field.toLowerCase()) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = field
-    sortDir.value = 'asc'
+async function handleExportPdf() {
+  isExportingPdf.value = true
+  try {
+    const params = {
+      search: searchTerm.value.trim() || undefined,
+      includeInactive: includeInactive.value,
+      sortBy: sortBy.value,
+      sortDir: sortDir.value,
+    }
+    const res = await apiClient.get('/v1/companies/export', {
+      params,
+      responseType: 'blob',
+    })
+    const blob = new Blob([res.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `empresas_receptoras_${new Date().toISOString().slice(0, 10)}.pdf`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    showAlert('Directorio de empresas exportado correctamente.', 'success')
+  } catch (err) {
+    showAlert('Error al exportar el directorio de empresas.', 'danger')
+  } finally {
+    isExportingPdf.value = false
   }
-  pageNumber.value = 1
-  loadCompanies({ silent: true })
 }
+
+const handleSort = toggleSort
 
 function handleOpenSearch() {
   openSearch({
@@ -881,35 +910,15 @@ onMounted(() => {
         <h3 class="tecnm-card-title">Empresas Registradas</h3>
       </div>
 
-      <!-- Barra de herramientas: Búsqueda reactiva, Mostrar Inactivas, Recargar -->
-      <div class="tecnm-card-toolbar">
-        <div style="display: flex; align-items: center; gap: 0.5rem; flex: 1; max-width: 480px;">
-          <input
-            id="companySearchInput"
-            v-model="searchTerm"
-            type="text"
-            class="tecnm-form-control"
-            placeholder="Buscar por nombre, razón social, siglas o RFC..."
-            @keyup.enter="handleSearchSubmit"
-          />
-          <button
-            type="button"
-            class="tecnm-btn tecnm-btn-primary tecnm-btn-sm"
-            @click="handleSearchSubmit"
-          >
-            Buscar
-          </button>
-          <button
-            v-if="searchTerm"
-            type="button"
-            class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
-            @click="clearSearch"
-          >
-            Limpiar
-          </button>
-        </div>
-
-        <div class="tecnm-toolbar-actions">
+      <!-- Barra de herramientas: Búsqueda reactiva, Mostrar Inactivas, Recargar y Exportar -->
+      <TecnmTableToolbar
+        v-model="searchTerm"
+        search-placeholder="Buscar por nombre, razón social, siglas o RFC..."
+        search-id="companySearchInput"
+        @search="handleSearchSubmit"
+        @clear="clearSearch"
+      >
+        <template #actions>
           <label v-if="!authStore.isCareerHead" class="tecnm-switch-label">
             <span class="tecnm-switch">
               <input
@@ -930,8 +939,14 @@ onMounted(() => {
           >
             Recargar Lista
           </button>
-        </div>
-      </div>
+          <TecnmExportButton
+            id="exportCompaniesBtn"
+            formats="pdf"
+            :loading="isExportingPdf"
+            @export="handleExportPdf"
+          />
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body">
         <div
@@ -953,42 +968,42 @@ onMounted(() => {
           <table class="tecnm-table tecnm-table-striped">
             <thead>
               <tr>
-                <th class="tecnm-th-sortable" @click="handleSort('Name')">
+                <th class="tecnm-th-sortable" @click="toggleSort('Name')">
                   Nombre de la Empresa
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'name' }">
-                    {{ sortBy.toLowerCase() === 'name' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Name') }">
+                    {{ getSortIcon('Name') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('LegalName')">
+                <th class="tecnm-th-sortable" @click="toggleSort('LegalName')">
                   Razón Social
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'legalname' }">
-                    {{ sortBy.toLowerCase() === 'legalname' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('LegalName') }">
+                    {{ getSortIcon('LegalName') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('TradeName')">
+                <th class="tecnm-th-sortable" @click="toggleSort('TradeName')">
                   Nombre Comercial (Siglas)
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'tradename' }">
-                    {{ sortBy.toLowerCase() === 'tradename' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('TradeName') }">
+                    {{ getSortIcon('TradeName') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('Rfc')">
+                <th class="tecnm-th-sortable" @click="toggleSort('Rfc')">
                   RFC
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'rfc' }">
-                    {{ sortBy.toLowerCase() === 'rfc' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Rfc') }">
+                    {{ getSortIcon('Rfc') }}
                   </span>
                 </th>
                 <th>Sector / Tamaño</th>
                 <th>Ubicación</th>
-                <th class="tecnm-th-sortable" @click="handleSort('ContactName')">
+                <th class="tecnm-th-sortable" @click="toggleSort('ContactName')">
                   Contacto Principal
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'contactname' }">
-                    {{ sortBy.toLowerCase() === 'contactname' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('ContactName') }">
+                    {{ getSortIcon('ContactName') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('IsActive')">
+                <th class="tecnm-th-sortable" @click="toggleSort('IsActive')">
                   Estado
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'isactive' }">
-                    {{ sortBy.toLowerCase() === 'isactive' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('IsActive') }">
+                    {{ getSortIcon('IsActive') }}
                   </span>
                 </th>
                 <th v-if="canViewAgreements">Convenio</th>

@@ -9,6 +9,8 @@ import TecnmPagination from '@/components/common/TecnmPagination.vue'
 import TecnmAutocomplete from '@/components/common/TecnmAutocomplete.vue'
 import TecnmBadge from '@/components/common/TecnmBadge.vue'
 import TecnmAdvisorFilter from '@/components/common/TecnmAdvisorFilter.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
 import apiClient, { getUploadErrorMessage } from '@/services/api'
 
 const route = useRoute()
@@ -1373,69 +1375,57 @@ onMounted(() => {
         </div>
       </div>
 
-      <div class="tecnm-card-toolbar" style="flex-wrap: wrap; gap: 0.75rem;">
-        <div class="tecnm-search-box" style="flex: 1; min-width: 250px;">
-          <input
-            v-model="matrixSearch"
-            type="search"
-            class="tecnm-form-control tecnm-form-control-sm"
-            placeholder="Buscar por estudiante, no. de control o anteproyecto..."
-            @keyup.enter="handleMatrixSearch"
+      <TecnmTableToolbar
+        v-model="matrixSearch"
+        search-placeholder="Buscar por estudiante, no. de control o anteproyecto..."
+        @search="handleMatrixSearch"
+      >
+        <template #filters>
+          <select
+            v-if="!authStore.isCareerHead"
+            v-model="matrixCareerFilter"
+            class="tecnm-form-control tecnm-filter-select"
+            style="width: auto; min-width: 180px;"
+            @change="handleMatrixSearch"
+          >
+            <option value="">Todas las Carreras</option>
+            <option v-for="c in careersList" :key="c.id" :value="String(c.id)">
+              {{ c.name }}
+            </option>
+          </select>
+
+          <select
+            v-model="matrixCompletionFilter"
+            class="tecnm-form-control tecnm-filter-select"
+            style="width: auto; min-width: 190px;"
+            @change="handleMatrixSearch"
+          >
+            <option value="">Todos los Estados</option>
+            <option value="completed">Completados (100% de archivos)</option>
+            <option value="incomplete">Incompletos (Archivos faltantes)</option>
+          </select>
+
+          <TecnmAdvisorFilter
+            v-if="!authStore.hasRole('advisor')"
+            v-model="matrixAdvisorFilter"
+            :advisors="advisorOptions"
+            :show-label="false"
+            placeholder="Buscar asesor..."
+            empty-value=""
+            @change="handleMatrixSearch"
           />
-        </div>
+        </template>
 
-        <select
-          v-if="!authStore.isCareerHead"
-          v-model="matrixCareerFilter"
-          class="tecnm-form-control tecnm-form-control-sm"
-          style="width: auto; min-width: 180px;"
-          @change="handleMatrixSearch"
-        >
-          <option value="">Todas las Carreras</option>
-          <option v-for="c in careersList" :key="c.id" :value="String(c.id)">
-            {{ c.name }}
-          </option>
-        </select>
-
-        <select
-          v-model="matrixCompletionFilter"
-          class="tecnm-form-control tecnm-form-control-sm"
-          style="width: auto; min-width: 190px;"
-          @change="handleMatrixSearch"
-        >
-          <option value="">Todos los Estados</option>
-          <option value="completed">Completados (100% de archivos)</option>
-          <option value="incomplete">Incompletos (Archivos faltantes)</option>
-        </select>
-
-        <TecnmAdvisorFilter
-          v-if="!authStore.hasRole('advisor')"
-          v-model="matrixAdvisorFilter"
-          :advisors="advisorOptions"
-          :show-label="false"
-          placeholder="Buscar asesor..."
-          empty-value=""
-          @change="handleMatrixSearch"
-        />
-
-        <button type="button" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" @click="handleMatrixSearch">
-          Filtrar
-        </button>
-
-        <button
-          id="exportMatrixExcelBtn"
-          type="button"
-          class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
-          :disabled="isExportingMatrix || matrixLoading"
-          title="Descargar matriz completa en Excel con los filtros seleccionados"
-          @click="handleExportMatrixExcel"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-          </svg>
-          <span>{{ isExportingMatrix ? 'Descargando...' : 'Descargar Excel' }}</span>
-        </button>
-      </div>
+        <template #actions>
+          <TecnmExportButton
+            id="exportMatrixExcelBtn"
+            formats="excel"
+            :loading="isExportingMatrix || matrixLoading"
+            label="Descargar Excel"
+            @export="handleExportMatrixExcel"
+          />
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body tecnm-p-0">
         <div class="tecnm-table-responsive">

@@ -5,6 +5,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import { useGlobalSearch } from '@/composables/useGlobalSearch'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
 
 const authStore = useAuthStore()
 const { confirm } = useConfirm()
@@ -559,32 +560,36 @@ onMounted(async () => {
             <span class="tecnm-badge-count">{{ totalCount }} emitidas</span>
           </div>
 
-          <!-- Filtros de búsqueda en historial -->
-          <div class="tecnm-history-filters">
-            <input
-              v-model="filters.search"
-              type="text"
-              class="tecnm-form-control"
-              placeholder="Buscar por tema o texto..."
-              @input="loadHistory"
-            />
-            <select v-model="filters.role" class="tecnm-form-control tecnm-select" @change="loadHistory">
-              <option value="">Todos los roles</option>
-              <option v-for="r in availableRoles" :key="r.code" :value="r.code">
-                {{ r.label }}
-              </option>
-            </select>
-            <select v-model="filters.careerId" class="tecnm-form-control tecnm-select" @change="loadHistory">
-              <option value="">Todas las carreras</option>
-              <option v-for="c in careers" :key="c.id" :value="c.id">
-                {{ c.name }} ({{ c.code }})
-              </option>
-            </select>
-            <label class="tecnm-filter-checkbox">
-              <input type="checkbox" v-model="filters.activeOnly" @change="loadHistory" />
-              <span>Solo vigentes</span>
-            </label>
-          </div>
+          <!-- Filtros de búsqueda en historial Estandarizados -->
+          <TecnmTableToolbar
+            v-model="filters.search"
+            search-placeholder="Buscar por tema o texto..."
+            @search="loadHistory"
+          >
+            <template #filters>
+              <select v-model="filters.role" class="tecnm-form-control tecnm-filter-select" style="min-width: 170px;" @change="loadHistory">
+                <option value="">Todos los roles</option>
+                <option v-for="r in availableRoles" :key="r.code" :value="r.code">
+                  {{ r.label }}
+                </option>
+              </select>
+              <select v-model="filters.careerId" class="tecnm-form-control tecnm-filter-select" style="min-width: 200px;" @change="loadHistory">
+                <option value="">Todas las carreras</option>
+                <option v-for="c in careers" :key="c.id" :value="c.id">
+                  {{ c.name }} ({{ c.code }})
+                </option>
+              </select>
+            </template>
+            <template #actions>
+              <label class="tecnm-switch-label">
+                <span class="tecnm-switch">
+                  <input type="checkbox" v-model="filters.activeOnly" @change="loadHistory" />
+                  <span class="tecnm-switch-slider"></span>
+                </span>
+                Solo vigentes
+              </label>
+            </template>
+          </TecnmTableToolbar>
 
           <!-- Tabla de Historial -->
           <div class="tecnm-table-responsive">

@@ -9,6 +9,9 @@ import apiClient, { getUploadErrorMessage } from '@/services/api'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
 import TecnmBadge from '@/components/common/TecnmBadge.vue'
 import TecnmAdvisorFilter from '@/components/common/TecnmAdvisorFilter.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
+import { useTableSort } from '@/composables/useTableSort'
 
 const route = useRoute()
 const router = useRouter()
@@ -21,8 +24,14 @@ const { open: openSearch } = useGlobalSearch()
 const students = ref([])
 const includeInactive = ref(false)
 const excludeEvaluated = ref(true)
-const sortBy = ref('ControlNumber')
-const sortDir = ref('asc')
+const { sortBy, sortDir, toggleSort, getSortIcon, isSortActive } = useTableSort(
+  'ControlNumber',
+  'asc',
+  () => {
+    pageNumber.value = 1
+    loadStudents({ silent: true })
+  }
+)
 const searchTerm = ref('')
 const isLoading = ref(false)
 
@@ -285,13 +294,9 @@ function getResidencyStageBadgeClass(stage) {
   }
 }
 
-let searchTimer = null
-function onSearchInput() {
-  clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    pageNumber.value = 1
-    loadStudents()
-  }, 300)
+function onSearchSubmit() {
+  pageNumber.value = 1
+  loadStudents()
 }
 
 function handleOpenSearch() {
@@ -324,16 +329,7 @@ function onCareerFilterChange() {
   loadStudents()
 }
 
-function handleSort(col) {
-  if (sortBy.value.toLowerCase() === col.toLowerCase()) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = col
-    sortDir.value = 'asc'
-  }
-  pageNumber.value = 1
-  loadStudents({ silent: true })
-}
+const handleSort = toggleSort
 
 function getSortClass(col) {
   if (sortBy.value !== col) return 'tecnm-sort-th'
@@ -749,76 +745,72 @@ onMounted(() => {
         <h3 class="tecnm-card-title">Directorio de Estudiantes</h3>
       </div>
 
-      <div class="tecnm-card-toolbar">
-        <div class="tecnm-form-group tecnm-mb-0 tecnm-search-box" style="margin-bottom: 0; flex: 1; max-width: 420px;">
-          <input
-            id="studentSearchInput"
-            v-model="searchTerm"
-            type="search"
-            class="tecnm-form-control"
-            placeholder="Buscar por nombre, no. control o correo..."
-            @input="onSearchInput"
+      <TecnmTableToolbar
+        v-model="searchTerm"
+        search-placeholder="Buscar por nombre, no. control o correo..."
+        search-id="studentSearchInput"
+        @search="onSearchSubmit"
+      >
+        <template #filters>
+          <div v-if="!authStore.isCareerHead" class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label for="careerFilterSelect" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Carrera:</label>
+            <select
+              id="careerFilterSelect"
+              v-model="selectedCareerFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 230px; font-size: 0.85rem;"
+              @change="onCareerFilterChange"
+            >
+              <option value="all">{{ authStore.isCoordinator ? 'Mis Carreras Asignadas' : 'Todas las Carreras' }}</option>
+              <option v-for="(name, id) in filteredCareers" :key="id" :value="id">
+                {{ name }}
+              </option>
+            </select>
+          </div>
+
+          <div v-else class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label for="careerHeadScopeSelect" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Vista:</label>
+            <select
+              id="careerHeadScopeSelect"
+              v-model="selectedCareerFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 220px; font-size: 0.85rem;"
+              @change="onCareerFilterChange"
+            >
+              <option :value="String(authStore.userCareerId)">Mi Carrera (Jefatura)</option>
+              <option value="my_advised">Mis Asesorados (Rol Asesor)</option>
+              <option value="all">Ver Todos (Carrera + Asesorados)</option>
+            </select>
+          </div>
+
+          <TecnmAdvisorFilter
+            v-model="selectedAdvisorFilter"
+            :advisors="advisorsList"
+            empty-value="all"
+            @change="onAdvisorFilterChange"
           />
-        </div>
 
-        <div v-if="!authStore.isCareerHead" class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-          <label for="careerFilterSelect" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Carrera:</label>
-          <select
-            id="careerFilterSelect"
-            v-model="selectedCareerFilter"
-            class="tecnm-form-control"
-            style="min-width: 230px; font-size: 0.85rem;"
-            @change="onCareerFilterChange"
-          >
-            <option value="all">{{ authStore.isCoordinator ? 'Mis Carreras Asignadas' : 'Todas las Carreras' }}</option>
-            <option v-for="(name, id) in filteredCareers" :key="id" :value="id">
-              {{ name }}
-            </option>
-          </select>
-        </div>
+          <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <select
+              id="stageFilterSelect"
+              v-model="stageFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 200px; font-size: 0.85rem;"
+              @change="onStageFilterChange"
+            >
+              <option value="all">Estado Residencia: Todos</option>
+              <option value="Sin Anteproyecto">Sin Anteproyecto</option>
+              <option value="Borrador">Borrador</option>
+              <option value="Anteproyecto Registrado">Anteproyecto Registrado</option>
+              <option value="Dictamen Aprobado">Dictamen Aprobado</option>
+              <option value="Asesor Asignado">Asesor Asignado</option>
+              <option value="En Residencia">En Residencia</option>
+              <option value="Con Observaciones">Con Observaciones</option>
+            </select>
+          </div>
+        </template>
 
-        <div v-else class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-          <label for="careerHeadScopeSelect" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Vista:</label>
-          <select
-            id="careerHeadScopeSelect"
-            v-model="selectedCareerFilter"
-            class="tecnm-form-control"
-            style="min-width: 220px; font-size: 0.85rem;"
-            @change="onCareerFilterChange"
-          >
-            <option :value="String(authStore.userCareerId)">Mi Carrera (Jefatura)</option>
-            <option value="my_advised">Mis Asesorados (Rol Asesor)</option>
-            <option value="all">Ver Todos (Carrera + Asesorados)</option>
-          </select>
-        </div>
-
-        <TecnmAdvisorFilter
-          v-model="selectedAdvisorFilter"
-          :advisors="advisorsList"
-          empty-value="all"
-          @change="onAdvisorFilterChange"
-        />
-
-        <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-          <select
-            id="stageFilterSelect"
-            v-model="stageFilter"
-            class="tecnm-form-control"
-            style="min-width: 200px; font-size: 0.85rem;"
-            @change="onStageFilterChange"
-          >
-            <option value="all">Estado Residencia: Todos</option>
-            <option value="Sin Anteproyecto">Sin Anteproyecto</option>
-            <option value="Borrador">Borrador</option>
-            <option value="Anteproyecto Registrado">Anteproyecto Registrado</option>
-            <option value="Dictamen Aprobado">Dictamen Aprobado</option>
-            <option value="Asesor Asignado">Asesor Asignado</option>
-            <option value="En Residencia">En Residencia</option>
-            <option value="Con Observaciones">Con Observaciones</option>
-          </select>
-        </div>
-
-        <div class="tecnm-toolbar-actions">
+        <template #actions>
           <label class="tecnm-switch-label" title="Ocultar estudiantes que ya completaron su ciclo y fueron evaluados">
             <span class="tecnm-switch">
               <input
@@ -843,16 +835,14 @@ onMounted(() => {
             </span>
             Mostrar inactivos
           </label>
-          <button
+          <TecnmExportButton
             id="exportStudentsBtn"
-            type="button"
-            class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
-            @click="handleExportPdf"
-          >
-            Exportar PDF
-          </button>
-        </div>
-      </div>
+            formats="pdf"
+            :loading="isExportingPdf"
+            @export="handleExportPdf"
+          />
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body">
         <div class="tecnm-table-responsive">
@@ -861,47 +851,47 @@ onMounted(() => {
               <tr>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('ControlNumber')"
+                  @click="toggleSort('ControlNumber')"
                 >
                   N° Control
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'controlnumber' }">
-                    {{ sortBy.toLowerCase() === 'controlnumber' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('ControlNumber') }">
+                    {{ getSortIcon('ControlNumber') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('FullName')"
+                  @click="toggleSort('FullName')"
                 >
                   Nombre Completo
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'fullname' }">
-                    {{ sortBy.toLowerCase() === 'fullname' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('FullName') }">
+                    {{ getSortIcon('FullName') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('CareerId')"
+                  @click="toggleSort('CareerId')"
                 >
                   Programa Educativo
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'careerid' }">
-                    {{ sortBy.toLowerCase() === 'careerid' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('CareerId') }">
+                    {{ getSortIcon('CareerId') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('Email')"
+                  @click="toggleSort('Email')"
                 >
                   Correo Institucional
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'email' }">
-                    {{ sortBy.toLowerCase() === 'email' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Email') }">
+                    {{ getSortIcon('Email') }}
                   </span>
                 </th>
                 <th
                   class="tecnm-th-sortable"
-                  @click="handleSort('ResidencyStage')"
+                  @click="toggleSort('ResidencyStage')"
                 >
                   Estado de las Residencias
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy.toLowerCase() === 'residencystage' }">
-                    {{ sortBy.toLowerCase() === 'residencystage' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('ResidencyStage') }">
+                    {{ getSortIcon('ResidencyStage') }}
                   </span>
                 </th>
                 <th class="tecnm-th-sortable">

@@ -4,6 +4,9 @@ import { useAuthStore } from '@/stores/auth'
 import { useConfirm } from '@/composables/useConfirm'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
 import TecnmAdvisorFilter from '@/components/common/TecnmAdvisorFilter.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
+import { useTableSort } from '@/composables/useTableSort'
 import apiClient from '@/services/api'
 
 const authStore = useAuthStore()
@@ -24,8 +27,16 @@ const errorMessage = ref('')
 const alertMessage = ref('')
 const alertType = ref('info')
 
-const sortBy = ref('title')
-const sortDir = ref('asc')
+const searchTerm = ref('')
+const isExportingPdf = ref(false)
+const { sortBy, sortDir, toggleSort, getSortIcon, isSortActive } = useTableSort(
+  'Title',
+  'asc',
+  () => {
+    pageNumber.value = 1
+    loadReleasableProjects()
+  }
+)
 
 const selectedCareerFilter = ref('all')
 const selectedAdvisorFilter = ref('all')
@@ -50,28 +61,10 @@ async function loadAdvisorsCatalog() {
   }
 }
 
-function handleSort(field) {
-  if (sortBy.value === field) {
-    sortDir.value = sortDir.value === 'asc' ? 'desc' : 'asc'
-  } else {
-    sortBy.value = field
-    sortDir.value = 'asc'
-  }
-}
+const handleSort = toggleSort
 
 const sortedProjects = computed(() => {
-  let list = [...projects.value]
-  const field = sortBy.value
-  const dir = sortDir.value === 'asc' ? 1 : -1
-  return list.sort((a, b) => {
-    let valA = a[field] ?? ''
-    let valB = b[field] ?? ''
-    if (typeof valA === 'string') valA = valA.toLowerCase()
-    if (typeof valB === 'string') valB = valB.toLowerCase()
-    if (valA < valB) return -1 * dir
-    if (valA > valB) return 1 * dir
-    return 0
-  })
+  return projects.value
 })
 
 // Paginación
@@ -114,6 +107,9 @@ async function loadReleasableProjects() {
     const params = {
       pageNumber: pageNumber.value,
       pageSize: pageSize.value,
+      search: searchTerm.value.trim() || undefined,
+      sortBy: sortBy.value,
+      sortDir: sortDir.value,
       careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
       advisorId: selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined,
     }
@@ -136,6 +132,35 @@ async function loadReleasableProjects() {
 function changePage(page) {
   pageNumber.value = page
   loadReleasableProjects()
+}
+
+async function handleExportPdf() {
+  isExportingPdf.value = true
+  try {
+    const params = {
+      search: searchTerm.value.trim() || undefined,
+      sortBy: sortBy.value,
+      sortDir: sortDir.value,
+      careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
+      advisorId: selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined,
+    }
+    const res = await apiClient.get('/v1/admin/reports/releasable/export', {
+      params,
+      responseType: 'blob',
+    })
+    const blob = new Blob([res.data], { type: 'application/pdf' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `proyectos_liberables_${new Date().toISOString().slice(0, 10)}.pdf`
+    link.click()
+    window.URL.revokeObjectURL(url)
+    showAlert('Reporte de proyectos liberables exportado en PDF correctamente.', 'success')
+  } catch (err) {
+    showAlert('Error al exportar el reporte de proyectos liberables en PDF.', 'danger')
+  } finally {
+    isExportingPdf.value = false
+  }
 }
 
 async function handleIssueReleaseLetter(p) {
@@ -270,64 +295,80 @@ onMounted(async () => {
         <h3 class="tecnm-card-title">Proyectos Elegibles para Emisión de Carta de Liberación (Libranza)</h3>
       </div>
 
-      <div class="tecnm-card-toolbar">
-        <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-          <label for="reportCareerFilter" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Carrera:</label>
-          <select
-            id="reportCareerFilter"
-            v-model="selectedCareerFilter"
-            class="tecnm-form-control"
-            style="min-width: 200px; font-size: 0.85rem;"
-            @change="pageNumber = 1; loadReleasableProjects()"
-          >
-            <option value="all">{{ authStore.isCoordinator ? 'Mis Carreras Asignadas' : 'Todas las Carreras' }}</option>
-            <option v-for="c in careersList" :key="c.id" :value="String(c.id)">
-              {{ c.name }}
-            </option>
-          </select>
-        </div>
+      <!-- Barra de Filtros, Búsqueda y Exportación Estandarizada -->
+      <TecnmTableToolbar
+        v-model="searchTerm"
+        search-placeholder="Buscar por proyecto, estudiante, control o asesor..."
+        @search="pageNumber = 1; loadReleasableProjects()"
+      >
+        <template #filters>
+          <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+            <label for="reportCareerFilter" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Carrera:</label>
+            <select
+              id="reportCareerFilter"
+              v-model="selectedCareerFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 200px; font-size: 0.85rem;"
+              @change="pageNumber = 1; loadReleasableProjects()"
+            >
+              <option value="all">{{ authStore.isCoordinator ? 'Mis Carreras Asignadas' : 'Todas las Carreras' }}</option>
+              <option v-for="c in careersList" :key="c.id" :value="String(c.id)">
+                {{ c.name }}
+              </option>
+            </select>
+          </div>
 
-        <TecnmAdvisorFilter
-          v-model="selectedAdvisorFilter"
-          :advisors="advisorsList"
-          empty-value="all"
-          @change="pageNumber = 1; loadReleasableProjects()"
-        />
-      </div>
+          <TecnmAdvisorFilter
+            v-model="selectedAdvisorFilter"
+            :advisors="advisorsList"
+            empty-value="all"
+            @change="pageNumber = 1; loadReleasableProjects()"
+          />
+        </template>
+
+        <template #actions>
+          <TecnmExportButton
+            id="exportReleasableBtn"
+            formats="pdf"
+            :loading="isExportingPdf"
+            @export="handleExportPdf"
+          />
+        </template>
+      </TecnmTableToolbar>
 
       <div class="tecnm-card-body">
         <div class="tecnm-table-responsive">
           <table class="tecnm-table tecnm-table-striped">
             <thead>
               <tr>
-                <th class="tecnm-th-sortable" @click="handleSort('title')">
+                <th class="tecnm-th-sortable" @click="toggleSort('Title')">
                   Título del Proyecto
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy === 'title' }">
-                    {{ sortBy === 'title' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('Title') }">
+                    {{ getSortIcon('Title') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('studentName')">
+                <th class="tecnm-th-sortable" @click="toggleSort('StudentName')">
                   Estudiante
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy === 'studentName' }">
-                    {{ sortBy === 'studentName' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('StudentName') }">
+                    {{ getSortIcon('StudentName') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('studentControlNumber')">
+                <th class="tecnm-th-sortable" @click="toggleSort('StudentControlNumber')">
                   N° Control
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy === 'studentControlNumber' }">
-                    {{ sortBy === 'studentControlNumber' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('StudentControlNumber') }">
+                    {{ getSortIcon('StudentControlNumber') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('advisorName')">
+                <th class="tecnm-th-sortable" @click="toggleSort('AdvisorName')">
                   Asesor
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy === 'advisorName' }">
-                    {{ sortBy === 'advisorName' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('AdvisorName') }">
+                    {{ getSortIcon('AdvisorName') }}
                   </span>
                 </th>
-                <th class="tecnm-th-sortable" @click="handleSort('averageScore')">
+                <th class="tecnm-th-sortable" @click="toggleSort('AverageScore')">
                   Promedio Evaluativo
-                  <span class="tecnm-sort-icon" :class="{ active: sortBy === 'averageScore' }">
-                    {{ sortBy === 'averageScore' ? (sortDir === 'asc' ? '↑' : '↓') : '↕' }}
+                  <span class="tecnm-sort-icon" :class="{ active: isSortActive('AverageScore') }">
+                    {{ getSortIcon('AverageScore') }}
                   </span>
                 </th>
                 <th>Estado Liberación</th>

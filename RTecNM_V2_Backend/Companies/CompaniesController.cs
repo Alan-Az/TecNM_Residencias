@@ -51,6 +51,16 @@ public class CompaniesController : ControllerBase
         return Ok(result.Data);
     }
 
+    [HttpGet("export")]
+    [Authorize(Roles = "admin,vinculacion,departmenthead,academic,director,jefecarrera,careerhead,coordinadora,coordinator")]
+    public async Task<IActionResult> ExportPdf([FromQuery] string? search, [FromQuery] string? sector, [FromQuery] string? sortBy, [FromQuery] string? sortDir, [FromQuery] bool includeInactive = false)
+    {
+        var result = await _companyService.ExportPdfAsync(search, sector, sortBy, sortDir, includeInactive);
+        return result.IsSuccess
+            ? File(result.Data!, "application/pdf", "empresas_receptoras_tecnm.pdf")
+            : BadRequest(new { message = result.ErrorMessage });
+    }
+
     [HttpGet("options")]
     [Authorize(Roles = "admin,vinculacion,departmenthead,academic,director,student,coordinadora,coordinator,jefecarrera,careerhead")]
     public async Task<IActionResult> GetOptions()

@@ -33,6 +33,33 @@ public class CompanyService : ICompanyService
         return Result<IEnumerable<CompanyResponseDto>>.Success(dtos);
     }
 
+    public async Task<Result<byte[]>> ExportPdfAsync(string? search = null, string? sector = null, string? sortBy = null, string? sortDir = null, bool includeInactive = false)
+    {
+        var companies = await _repository.GetAllForExportAsync(search, sector, sortBy, sortDir, includeInactive);
+        var definition = new PdfTableDefinition
+        {
+            Title = "Directorio Institucional de Empresas Receptoras - TecNM Campus Monclova",
+            Headers = new List<string> { "Nombre / Razón Social", "RFC", "Sector", "Contacto", "Correo", "Teléfono", "Convenio", "Estado" },
+            Rows = companies.Select(c =>
+            {
+                var hasActiveAgreement = c.HasAgreement || (c.AgreementCompanies != null && c.AgreementCompanies.Any(ac => ac.Agreement != null && ac.Agreement.IsActiveAgreement));
+                return new List<string>
+                {
+                    !string.IsNullOrWhiteSpace(c.Name) ? c.Name : (c.LegalName ?? string.Empty),
+                    c.Rfc ?? string.Empty,
+                    c.Sector ?? string.Empty,
+                    c.ContactName ?? string.Empty,
+                    c.ContactEmail ?? string.Empty,
+                    c.ContactPhone ?? string.Empty,
+                    hasActiveAgreement ? "Vigente" : "Sin convenio",
+                    c.IsActive ? "Activo" : "Inactivo"
+                };
+            }).ToList()
+        };
+
+        return Result<byte[]>.Success(PdfExportService.GenerateTablePdf(definition));
+    }
+
     public async Task<Result<CompanyResponseDto>> GetByIdAsync(long id)
     {
         var company = await _repository.GetByIdAsync(id);

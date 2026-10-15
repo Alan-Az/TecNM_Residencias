@@ -4,6 +4,8 @@ import { useAuthStore } from '@/stores/auth'
 import { useAudit } from '@/composables/useAudit'
 import { useConfirm } from '@/composables/useConfirm'
 import TecnmPagination from '@/components/common/TecnmPagination.vue'
+import TecnmTableToolbar from '@/components/common/TecnmTableToolbar.vue'
+import TecnmExportButton from '@/components/common/TecnmExportButton.vue'
 import apiClient from '@/services/api'
 
 const authStore = useAuthStore()
@@ -622,17 +624,13 @@ onMounted(async () => {
           <h3 class="tecnm-card-title">Roles Registrados</h3>
         </div>
 
-        <div class="tecnm-card-toolbar">
-          <input
-            id="roleSearchInput"
-            v-model="rolesSearch"
-            type="text"
-            class="tecnm-form-control tecnm-search-input"
-            placeholder="Buscar por nombre o código..."
-            @input="rolesPageNumber = 1; loadRolesData()"
-          />
-
-          <div class="tecnm-toolbar-actions">
+        <TecnmTableToolbar
+          v-model="rolesSearch"
+          search-placeholder="Buscar por nombre o código..."
+          search-id="roleSearchInput"
+          @search="rolesPageNumber = 1; loadRolesData()"
+        >
+          <template #actions>
             <label class="tecnm-switch-label">
               <span class="tecnm-switch">
                 <input
@@ -648,13 +646,13 @@ onMounted(async () => {
             <button
               v-if="!authStore.isReadOnly"
               type="button"
-              class="tecnm-btn tecnm-btn-primary"
+              class="tecnm-btn tecnm-btn-primary tecnm-btn-sm"
               @click="openCreateRoleModal"
             >
               + Nuevo Rol
             </button>
-          </div>
-        </div>
+          </template>
+        </TecnmTableToolbar>
 
         <div class="tecnm-card-body">
           <div class="tecnm-table-responsive">
@@ -782,53 +780,52 @@ onMounted(async () => {
           <h3 class="tecnm-card-title">Asignación de Roles a Usuarios</h3>
         </div>
 
-        <div class="tecnm-card-toolbar">
-          <select
-            id="userRoleFilter"
-            v-model="userRoleFilter"
-            class="tecnm-form-control tecnm-filter-select"
-            @change="usersPageNumber = 1; loadUsersData()"
-          >
-            <option value="all">Todos los roles</option>
-            <option value="with_role">Con Rol Asignado</option>
-            <option value="without_role">Sin Rol Asignado</option>
-            <option
-              v-for="r in roleOptions"
-              :key="r.id"
-              :value="r.code"
+        <TecnmTableToolbar
+          v-model="userSearch"
+          search-placeholder="Buscar por nombre o correo..."
+          search-id="userSearchInput"
+          @search="usersPageNumber = 1; loadUsersData()"
+        >
+          <template #filters>
+            <select
+              id="userRoleFilter"
+              v-model="userRoleFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              style="min-width: 170px;"
+              @change="usersPageNumber = 1; loadUsersData()"
             >
-              {{ r.name }}
-            </option>
-          </select>
+              <option value="all">Todos los roles</option>
+              <option value="with_role">Con Rol Asignado</option>
+              <option value="without_role">Sin Rol Asignado</option>
+              <option
+                v-for="r in roleOptions"
+                :key="r.id"
+                :value="r.code"
+              >
+                {{ r.name }}
+              </option>
+            </select>
 
-          <select
-            id="userCareerFilter"
-            v-model="userCareerFilter"
-            class="tecnm-form-control tecnm-filter-select"
-            aria-label="Filtrar por Carrera"
-            style="min-width: 220px;"
-            @change="usersPageNumber = 1; loadUsersData()"
-          >
-            <option value="all">Todas las Carreras</option>
-            <option
-              v-for="c in availableCareers"
-              :key="c.id"
-              :value="String(c.id)"
+            <select
+              id="userCareerFilter"
+              v-model="userCareerFilter"
+              class="tecnm-form-control tecnm-filter-select"
+              aria-label="Filtrar por Carrera"
+              style="min-width: 220px;"
+              @change="usersPageNumber = 1; loadUsersData()"
             >
-              {{ c.name }} ({{ c.code }})
-            </option>
-          </select>
+              <option value="all">Todas las Carreras</option>
+              <option
+                v-for="c in availableCareers"
+                :key="c.id"
+                :value="String(c.id)"
+              >
+                {{ c.name }} ({{ c.code }})
+              </option>
+            </select>
+          </template>
 
-          <input
-            id="userSearchInput"
-            v-model="userSearch"
-            type="text"
-            class="tecnm-form-control tecnm-search-input"
-            placeholder="Buscar por nombre o correo..."
-            @input="usersPageNumber = 1; loadUsersData()"
-          />
-
-          <div class="tecnm-toolbar-actions">
+          <template #actions>
             <label class="tecnm-switch-label">
               <span class="tecnm-switch">
                 <input
@@ -844,13 +841,13 @@ onMounted(async () => {
             <button
               v-if="!authStore.isReadOnly"
               type="button"
-              class="tecnm-btn tecnm-btn-primary"
+              class="tecnm-btn tecnm-btn-primary tecnm-btn-sm"
               @click="openCreateUserModal"
             >
               + Registrar Usuario / Asignar Rol
             </button>
-          </div>
-        </div>
+          </template>
+        </TecnmTableToolbar>
 
         <div class="tecnm-card-body">
           <div class="tecnm-table-responsive">

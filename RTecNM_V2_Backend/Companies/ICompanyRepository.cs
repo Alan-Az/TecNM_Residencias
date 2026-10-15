@@ -5,6 +5,7 @@ namespace TecNM.Residency.Companies;
 public interface ICompanyRepository
 {
     Task<PaginatedResult<Company>> GetPagedAsync(PaginationQuery query, string? status, bool includeInactive = false, bool onlyWithActiveAgreement = false);
+    Task<List<Company>> GetAllForExportAsync(string? search, string? sector, string? sortBy, string? sortDir, bool includeInactive = false);
     Task<IEnumerable<Company>> GetAllAsync(bool includeInactive = false, bool onlyWithActiveAgreement = false);
     Task<Company?> GetByIdAsync(long id);
     Task<Company?> GetByRfcAsync(string rfc);

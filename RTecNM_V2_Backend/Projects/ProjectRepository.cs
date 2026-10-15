@@ -29,7 +29,11 @@ public class ProjectRepository : IProjectRepository
             .FirstOrDefaultAsync(p => p.Id == id);
 
         if (project != null && _currentUser.Role == UserRole.CareerHead && _currentUser.CareerId.HasValue && project.Student != null && project.Student.CareerId != _currentUser.CareerId.Value)
-            return null;
+        {
+            var isMyAdvised = project.AdvisorId.HasValue && _context.Advisors.Any(a => a.UserId == _currentUser.UserId && a.Id == project.AdvisorId.Value);
+            if (!isMyAdvised)
+                return null;
+        }
 
         if (project != null && _currentUser.Role == UserRole.Coordinator && project.Student != null && !_currentUser.CareerIds.Contains(project.Student.CareerId))
             return null;
@@ -91,7 +95,22 @@ public class ProjectRepository : IProjectRepository
 
         if (_currentUser.Role == UserRole.CareerHead && _currentUser.CareerId.HasValue)
         {
-            q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
+            var myAdvisorId = _context.Advisors.Where(a => a.UserId == _currentUser.UserId).Select(a => (long?)a.Id).FirstOrDefault();
+            if (careerId.HasValue && careerId.Value > 0)
+            {
+                q = q.Where(p => p.Student != null && p.Student.CareerId == careerId.Value);
+            }
+            else if (advisorId.HasValue && advisorId.Value > 0)
+            {
+                q = q.Where(p => p.AdvisorId == advisorId.Value || (p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value));
+            }
+            else
+            {
+                if (myAdvisorId.HasValue)
+                    q = q.Where(p => (p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value) || p.AdvisorId == myAdvisorId.Value);
+                else
+                    q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
+            }
             q = q.Where(p => p.Status != ProjectStatus.Draft);
         }
         else if (_currentUser.Role == UserRole.Coordinator)
@@ -227,7 +246,22 @@ public class ProjectRepository : IProjectRepository
 
         if (_currentUser.Role == UserRole.CareerHead && _currentUser.CareerId.HasValue)
         {
-            q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
+            var myAdvisorId = _context.Advisors.Where(a => a.UserId == _currentUser.UserId).Select(a => (long?)a.Id).FirstOrDefault();
+            if (careerId.HasValue && careerId.Value > 0)
+            {
+                q = q.Where(p => p.Student != null && p.Student.CareerId == careerId.Value);
+            }
+            else if (advisorId.HasValue && advisorId.Value > 0)
+            {
+                q = q.Where(p => p.AdvisorId == advisorId.Value || (p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value));
+            }
+            else
+            {
+                if (myAdvisorId.HasValue)
+                    q = q.Where(p => (p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value) || p.AdvisorId == myAdvisorId.Value);
+                else
+                    q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
+            }
             q = q.Where(p => p.Status != ProjectStatus.Draft);
         }
         else if (_currentUser.Role == UserRole.Coordinator)
@@ -285,7 +319,11 @@ public class ProjectRepository : IProjectRepository
 
         if (_currentUser.Role == UserRole.CareerHead && _currentUser.CareerId.HasValue)
         {
-            q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
+            var myAdvisorId = _context.Advisors.Where(a => a.UserId == _currentUser.UserId).Select(a => (long?)a.Id).FirstOrDefault();
+            if (myAdvisorId.HasValue)
+                q = q.Where(p => (p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value) || p.AdvisorId == myAdvisorId.Value);
+            else
+                q = q.Where(p => p.Student != null && p.Student.CareerId == _currentUser.CareerId.Value);
         }
         else if (_currentUser.Role == UserRole.Coordinator)
         {

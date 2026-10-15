@@ -61,7 +61,7 @@ public class ProjectService : IProjectService
 
     private async Task<Advisor?> GetSessionAdvisorAsync()
     {
-        if (!_currentUser.IsInRole(UserRole.Advisor)) return null;
+        if (!_currentUser.IsInRole(UserRole.Advisor) && !_currentUser.IsInRole(UserRole.CareerHead)) return null;
         return await _advisorRepository.GetByUserIdAsync(_currentUser.UserId);
     }
 
@@ -472,18 +472,20 @@ public class ProjectService : IProjectService
 
     public async Task<Result<PaginatedResult<ProjectResponseDto>>> GetAdvisorProjectsPagedAsync(PaginationQuery query)
     {
+        var advisor = await GetSessionAdvisorAsync();
+        if (advisor is not null)
+        {
+            var paged = await _repository.GetPagedByAdvisorIdAsync(advisor.Id, query);
+            return Result<PaginatedResult<ProjectResponseDto>>.Success(MapPaged(paged));
+        }
+
         if (IsStaff())
         {
             var all = await _repository.GetPagedAsync(query, "all");
             return Result<PaginatedResult<ProjectResponseDto>>.Success(MapPaged(all));
         }
 
-        var advisor = await GetSessionAdvisorAsync();
-        if (advisor is null)
-            return Result<PaginatedResult<ProjectResponseDto>>.Failure("No se encontró un perfil de asesor asociado a tu cuenta.", 404);
-
-        var paged = await _repository.GetPagedByAdvisorIdAsync(advisor.Id, query);
-        return Result<PaginatedResult<ProjectResponseDto>>.Success(MapPaged(paged));
+        return Result<PaginatedResult<ProjectResponseDto>>.Failure("No se encontró un perfil de asesor asociado a tu cuenta.", 404);
     }
 
     public async Task<Result<List<ProjectOptionDto>>> GetOptionsAsync()
@@ -568,6 +570,23 @@ public class ProjectService : IProjectService
 
         if (_currentUser.IsInRole(UserRole.CareerHead))
         {
+            var advisor = await _advisorRepository.GetByUserIdAsync(_currentUser.UserId);
+            if (advisor is not null)
+            {
+                if (project.AdvisorId == advisor.Id || (project.Advisor is not null && project.Advisor.UserId == _currentUser.UserId))
+                    return Result<bool>.Success(true);
+
+                var studentAdvisorId = project.Student?.AdvisorId;
+                if (!studentAdvisorId.HasValue && project.StudentId > 0)
+                {
+                    var st = await _studentRepository.GetByIdAsync(project.StudentId);
+                    studentAdvisorId = st?.AdvisorId;
+                }
+
+                if (studentAdvisorId.HasValue && studentAdvisorId.Value == advisor.Id)
+                    return Result<bool>.Success(true);
+            }
+
             var careerId = project.Student?.CareerId;
             if (careerId == null)
             {

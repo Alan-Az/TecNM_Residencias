@@ -143,8 +143,18 @@ public class AuthService : IAuthService
             }
         }
 
+        long? advisorId = null;
+        if (user.Role == UserRole.Advisor || user.Role == UserRole.CareerHead)
+        {
+            advisorId = await _context.Advisors
+                .AsNoTracking()
+                .Where(a => a.UserId == user.Id && a.IsActive)
+                .Select(a => (long?)a.Id)
+                .FirstOrDefaultAsync();
+        }
+
         var permissions = await GetUserPermissionSlugsAsync(user);
-        var token = GenerateJwtToken(user, permissions, careerId, coordinatorCareerIds);
+        var token = GenerateJwtToken(user, permissions, careerId, coordinatorCareerIds, advisorId);
         var expiresIn = (int)TimeSpan.FromMinutes(_jwtSettings.ExpirationMinutes).TotalSeconds;
 
         var roleCode = user.Role switch
@@ -165,6 +175,7 @@ public class AuthService : IAuthService
                 FullName = fullName,
                 ControlNumber = controlNumber,
                 CareerId = careerId,
+                AdvisorId = advisorId,
                 CareerIds = coordinatorCareerIds,
                 CareerNames = coordinatorCareerNames,
                 Role = roleCode,
@@ -205,20 +216,48 @@ public class AuthService : IAuthService
             .Distinct()
             .ToListAsync();
 
-        if (perms.Count > 0) return perms;
-
-        var roleCode = user.Role switch
+        if (perms.Count == 0)
         {
-            UserRole.CareerHead => "jefecarrera",
-            UserRole.Coordinator => "coordinadora",
-            _ => user.Role.ToString().ToLowerInvariant()
-        };
+            var roleCode = user.Role switch
+            {
+                UserRole.CareerHead => "jefecarrera",
+                UserRole.Coordinator => "coordinadora",
+                _ => user.Role.ToString().ToLowerInvariant()
+            };
 
-        return await _context.RolePermissions
-            .Where(rp => rp.Role != null && rp.Role.Code == roleCode && rp.Role.IsActive && rp.IsActive && rp.Permission!.IsActive && rp.Permission!.Module!.IsActive)
-            .Select(rp => rp.Permission!.Slug)
-            .Distinct()
-            .ToListAsync();
+            perms = await _context.RolePermissions
+                .Where(rp => rp.Role != null && rp.Role.Code == roleCode && rp.Role.IsActive && rp.IsActive && rp.Permission!.IsActive && rp.Permission!.Module!.IsActive)
+                .Select(rp => rp.Permission!.Slug)
+                .Distinct()
+                .ToListAsync();
+        }
+
+        if (user.Role == UserRole.CareerHead)
+        {
+            var advisorPerms = await _context.RolePermissions
+                .Where(rp => rp.Role != null && rp.Role.Code == "advisor" && rp.Role.IsActive && rp.IsActive && rp.Permission!.IsActive && rp.Permission!.Module!.IsActive)
+                .Select(rp => rp.Permission!.Slug)
+                .Distinct()
+                .ToListAsync();
+
+            if (advisorPerms.Count == 0)
+            {
+                advisorPerms = new List<string>
+                {
+                    "projects.advisor",
+                    "activities.progress.validate",
+                    "advisories.session.record",
+                    "evaluations.grading",
+                    "evaluations.grade.partial",
+                    "evaluations.grade.final",
+                    "evaluations.summary.view"
+                };
+            }
+
+            perms = perms.Union(advisorPerms).Distinct().ToList();
+        }
+
+        return perms;
     }
 
     private bool VerifyPassword(string password, string hash)
@@ -248,7 +287,7 @@ public class AuthService : IAuthService
         return storedHash == computedHash;
     }
 
-    private string GenerateJwtToken(User user, List<string> permissions, long? careerId = null, List<long>? careerIds = null)
+    private string GenerateJwtToken(User user, List<string> permissions, long? careerId = null, List<long>? careerIds = null, long? advisorId = null)
     {
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));
         var credentials = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
@@ -276,6 +315,12 @@ public class AuthService : IAuthService
         else if (user.Role == UserRole.Coordinator)
         {
             claimsList.Add(new Claim(ClaimTypes.Role, "coordinator"));
+        }
+
+        if (advisorId.HasValue && advisorId.Value > 0)
+        {
+            claimsList.Add(new Claim("advisor_id", advisorId.Value.ToString()));
+            claimsList.Add(new Claim("AdvisorId", advisorId.Value.ToString()));
         }
 
         if (careerIds != null && careerIds.Any())

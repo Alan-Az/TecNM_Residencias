@@ -41,7 +41,7 @@ public class EvaluationService : IEvaluationService
 
     private async Task<long?> GetSessionAdvisorIdAsync()
     {
-        if (!_currentUser.IsInRole(UserRole.Advisor)) return null;
+        if (!_currentUser.IsInRole(UserRole.Advisor) && !_currentUser.IsInRole(UserRole.CareerHead)) return null;
         var advisor = await _advisorRepository.GetByUserIdAsync(_currentUser.UserId);
         return advisor?.Id;
     }
@@ -105,13 +105,21 @@ public class EvaluationService : IEvaluationService
 
         // Atribución inmutable: el evaluador se deriva de la sesión activa.
         long evaluatorId;
-        if (_currentUser.IsInRole(UserRole.Advisor))
+        if (_currentUser.IsInRole(UserRole.Advisor) || _currentUser.IsInRole(UserRole.CareerHead))
         {
             var advisorId = await GetSessionAdvisorIdAsync();
-            if (!advisorId.HasValue)
+            if (advisorId.HasValue)
+            {
+                evaluatorId = advisorId.Value;
+            }
+            else if (IsStaff())
+            {
+                evaluatorId = dto.EvaluatorId > 0 ? dto.EvaluatorId : _currentUser.UserId;
+            }
+            else
+            {
                 return Result<EvaluationResponseDto>.Failure("No se encontró un perfil de asesor asociado a tu cuenta.", 403);
-
-            evaluatorId = advisorId.Value;
+            }
         }
         else if (IsStaff())
         {
@@ -169,9 +177,9 @@ public class EvaluationService : IEvaluationService
         if (project is null)
             return Result<AdvisorySessionResponseDto>.Failure("El anteproyecto especificado no existe.", 404);
 
-        // Atribución inmutable: el asesor registra sus asesorías; administradores supervisan; académicos/jefes son solo lectura.
+        // Atribución inmutable: el asesor registra sus asesorías; administradores supervisan; académicos son solo lectura.
         long advisorId;
-        if (_currentUser.IsInRole(UserRole.Advisor))
+        if (_currentUser.IsInRole(UserRole.Advisor) || _currentUser.IsInRole(UserRole.CareerHead))
         {
             var sessionAdvisorId = await GetSessionAdvisorIdAsync();
             if (!sessionAdvisorId.HasValue)
@@ -270,7 +278,7 @@ public class EvaluationService : IEvaluationService
         if (session == null || !session.IsActive)
             return Result<AdvisorySessionResponseDto>.Failure("Sesión de asesoría no encontrada.", 404);
 
-        if (_currentUser.IsInRole(UserRole.Advisor))
+        if (_currentUser.IsInRole(UserRole.Advisor) || _currentUser.IsInRole(UserRole.CareerHead))
         {
             var sessionAdvisorId = await GetSessionAdvisorIdAsync();
             if (session.AdvisorId != sessionAdvisorId && !_currentUser.IsInRole(UserRole.Admin))
@@ -303,7 +311,7 @@ public class EvaluationService : IEvaluationService
         if (session == null || !session.IsActive)
             return Result<bool>.Failure("Sesión de asesoría no encontrada o ya fue eliminada.", 404);
 
-        if (_currentUser.IsInRole(UserRole.Advisor))
+        if (_currentUser.IsInRole(UserRole.Advisor) || _currentUser.IsInRole(UserRole.CareerHead))
         {
             var sessionAdvisorId = await GetSessionAdvisorIdAsync();
             if (session.AdvisorId != sessionAdvisorId && !_currentUser.IsInRole(UserRole.Admin))

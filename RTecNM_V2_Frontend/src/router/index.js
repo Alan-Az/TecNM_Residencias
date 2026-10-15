@@ -76,10 +76,14 @@ const routes = [
     meta: {
       requiresAuth: true,
       title: 'Empresas Receptoras - Sistema de Residencias',
-      roles: ['admin', 'vinculacion', 'departmenthead', 'academic', 'director', 'coordinadora', 'coordinator'],
+      roles: ['admin', 'vinculacion', 'departmenthead', 'academic', 'director', 'coordinadora', 'coordinator', 'jefecarrera', 'careerhead'],
       permission: 'companies.view',
       navActive: 'companies',
     },
+  },
+  {
+    path: '/projects',
+    redirect: '/projects/review',
   },
   {
     path: '/projects/proposal',

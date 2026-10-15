@@ -21,7 +21,7 @@ public class EvaluationsController : ControllerBase
     }
 
     [HttpPost]
-    [Authorize(Roles = "admin,departmenthead,academic,academico,advisor")]
+    [Authorize(Roles = "admin,departmenthead,academic,academico,advisor,careerhead,jefecarrera")]
     public async Task<IActionResult> Grade([FromBody] GradeEvaluationDto dto)
     {
         var access = await _projectService.CanAccessProjectAsync(dto.ProjectId);
@@ -61,7 +61,7 @@ public class EvaluationsController : ControllerBase
     }
 
     [HttpPost("sessions")]
-    [Authorize(Roles = "admin,advisor")]
+    [Authorize(Roles = "admin,advisor,careerhead,jefecarrera")]
     [RequirePermission("advisories.session.record")]
     public async Task<IActionResult> RecordSession([FromBody] CreateAdvisorySessionDto dto)
     {
@@ -77,7 +77,7 @@ public class EvaluationsController : ControllerBase
     }
 
     [HttpPut("sessions/{id:long}")]
-    [Authorize(Roles = "admin,advisor")]
+    [Authorize(Roles = "admin,advisor,careerhead,jefecarrera")]
     public async Task<IActionResult> UpdateSession(long id, [FromBody] UpdateAdvisorySessionDto dto)
     {
         var result = await _evaluationService.UpdateAdvisorySessionAsync(id, dto);
@@ -88,7 +88,7 @@ public class EvaluationsController : ControllerBase
     }
 
     [HttpDelete("sessions/{id:long}")]
-    [Authorize(Roles = "admin,advisor")]
+    [Authorize(Roles = "admin,advisor,careerhead,jefecarrera")]
     public async Task<IActionResult> DeleteSession(long id)
     {
         var result = await _evaluationService.DeleteAdvisorySessionAsync(id);

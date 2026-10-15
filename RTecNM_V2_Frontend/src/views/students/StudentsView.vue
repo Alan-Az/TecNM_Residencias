@@ -229,6 +229,7 @@ function formatTecNMDate(iso) {
 async function loadStudents({ silent = false } = {}) {
   if (!silent) isLoading.value = true
   try {
+    const isAdvisedOnly = selectedCareerFilter.value === 'my_advised'
     const params = {
       pageNumber: pageNumber.value,
       pageSize: pageSize.value,
@@ -237,8 +238,10 @@ async function loadStudents({ silent = false } = {}) {
       search: searchTerm.value.trim() || undefined,
       includeInactive: includeInactive.value,
       excludeEvaluated: excludeEvaluated.value,
-      careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
-      advisorId: selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined,
+      careerId: (selectedCareerFilter.value !== 'all' && !isAdvisedOnly) ? Number(selectedCareerFilter.value) : undefined,
+      advisorId: isAdvisedOnly
+        ? (authStore.userAdvisorId || undefined)
+        : (selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined),
       residencyStage: stageFilter.value !== 'all' ? stageFilter.value : undefined,
     }
     const res = await apiClient.get('/v1/students', { params })
@@ -536,14 +539,17 @@ function viewProfile(student) {
 
 async function handleExportPdf() {
   try {
+    const isAdvisedOnly = selectedCareerFilter.value === 'my_advised'
     const params = {
       search: searchTerm.value.trim() || undefined,
       sortBy: sortBy.value,
       sortDir: sortDir.value,
       includeInactive: includeInactive.value,
       excludeEvaluated: excludeEvaluated.value,
-      careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
-      advisorId: selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined,
+      careerId: (selectedCareerFilter.value !== 'all' && !isAdvisedOnly) ? Number(selectedCareerFilter.value) : undefined,
+      advisorId: isAdvisedOnly
+        ? (authStore.userAdvisorId || undefined)
+        : (selectedAdvisorFilter.value !== 'all' ? Number(selectedAdvisorFilter.value) : undefined),
       residencyStage: stageFilter.value !== 'all' ? stageFilter.value : undefined,
     }
     const res = await apiClient.get('/v1/students/export', {
@@ -771,6 +777,21 @@ onMounted(() => {
           </select>
         </div>
 
+        <div v-else class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <label for="careerHeadScopeSelect" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Vista:</label>
+          <select
+            id="careerHeadScopeSelect"
+            v-model="selectedCareerFilter"
+            class="tecnm-form-control"
+            style="min-width: 220px; font-size: 0.85rem;"
+            @change="onCareerFilterChange"
+          >
+            <option :value="String(authStore.userCareerId)">Mi Carrera (Jefatura)</option>
+            <option value="my_advised">Mis Asesorados (Rol Asesor)</option>
+            <option value="all">Ver Todos (Carrera + Asesorados)</option>
+          </select>
+        </div>
+
         <TecnmAdvisorFilter
           v-model="selectedAdvisorFilter"
           :advisors="advisorsList"
@@ -911,7 +932,17 @@ onMounted(() => {
               >
                 <td><strong>{{ s.controlNumber }}</strong></td>
                 <td>{{ s.fullName || `${s.firstName} ${s.lastName} ${s.lastName2 || ''}`.trim() }}</td>
-                <td>{{ CAREERS[s.careerId] || s.career || 'No especificada' }}</td>
+                <td>
+                  {{ CAREERS[s.careerId] || s.career || 'No especificada' }}
+                  <span
+                    v-if="authStore.isCareerHead && authStore.userCareerId && s.careerId && Number(s.careerId) !== Number(authStore.userCareerId)"
+                    class="tecnm-badge tecnm-badge-info"
+                    style="font-size: 0.7rem; margin-left: 0.35rem; display: inline-block; vertical-align: middle;"
+                    title="Estudiante de otra carrera asignado para asesoría académica"
+                  >
+                    Asesoría Externa
+                  </span>
+                </td>
                 <td>{{ s.email }}</td>
                 <td>
                   <span

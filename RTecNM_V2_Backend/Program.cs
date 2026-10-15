@@ -158,6 +158,9 @@ using (var scope = app.Services.CreateScope())
         // Confirmar solicitudes para todos los estudiantes con anteproyecto activo enviado
         await SolicitudRemediation.RemediateActiveProjectSolicitudesAsync(dbContext, app.Logger);
 
+        // Sincronizar perfil dual de Asesor para Jefes de Carrera
+        await CareerHeadAdvisorRemediation.RemediateCareerHeadAdvisorsAsync(dbContext, app.Logger);
+
         // Generar/Asegurar plantillas Excel por defecto (Plantilla_Alumnos.xlsx y Plantilla_Empresas.xlsx)
         ExcelTemplateSeeder.EnsureTemplatesExist(app.Environment.ContentRootPath, app.Logger);
 

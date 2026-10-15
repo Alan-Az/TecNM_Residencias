@@ -94,7 +94,7 @@ const showAdvisorAssignments = computed(() =>
 )
 
 const showCompanies = computed(() =>
-  !authStore.hasRole('student') &&
+  !authStore.hasRole('student', 'advisor', 'asesor') &&
   (authStore.isAdmin ||
    authStore.isCoordinator ||
    authStore.hasPermission('companies.view') ||

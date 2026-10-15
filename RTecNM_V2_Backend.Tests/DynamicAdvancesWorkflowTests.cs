@@ -358,7 +358,19 @@ public class DynamicAdvancesWorkflowTests
         mockProjectRepo.Setup(r => r.GetByIdAsync(project.Id)).ReturnsAsync(project);
         mockProjectRepo.Setup(r => r.UpdateAsync(It.IsAny<Project>())).Returns(Task.CompletedTask);
 
-        var evalService = new EvaluationService(mockEvalRepo.Object, mockCurrentUser.Object, mockAdvisorRepo.Object, mockProjectRepo.Object);
+        var mockNotification = new Mock<TecNM.Residency.Notifications.INotificationService>();
+        var mockEmailQueue = new Mock<IEmailQueue>();
+        var mockEmailTemplate = new Mock<IEmailTemplateService>();
+
+        var evalService = new EvaluationService(
+            mockEvalRepo.Object,
+            mockCurrentUser.Object,
+            mockAdvisorRepo.Object,
+            mockProjectRepo.Object,
+            mockNotification.Object,
+            mockEmailQueue.Object,
+            mockEmailTemplate.Object,
+            db);
 
         var dto = new GradeEvaluationDto(
             project.Id,

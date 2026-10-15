@@ -56,12 +56,28 @@ const isProjectReadOnly = computed(() => {
   return isProjectCompleted.value || ['cancelled', 'rejected', 'pending', 'under_review', 'proposed', 'draft'].includes(st)
 })
 
+const isProjectAdvisor = computed(() => {
+  if (!currentProject.value) return false
+  const myAdvisorId = authStore.userAdvisorId
+  if (!myAdvisorId) return false
+  return currentProject.value.advisorId === myAdvisorId ||
+         currentProject.value.advisor_id === myAdvisorId ||
+         currentProject.value.studentAdvisorId === myAdvisorId
+})
+
 const canGrade = computed(() => {
-  if (authStore.isReadOnly || authStore.isCareerHead) return false
-  if (!authStore.hasRole('admin', 'departmenthead', 'advisor')) return false
+  if (authStore.isReadOnly) return false
+  if (authStore.isAdmin) return Boolean(currentProject.value?.id)
   if (!currentProject.value?.id) return false
-  if (isAdvisor.value && isProjectReadOnly.value) return false
-  return true
+  if (isProjectReadOnly.value) return false
+
+  if (isAdvisor.value || authStore.isCareerHead) {
+    return isProjectAdvisor.value || authStore.hasPermission('evaluations.grading')
+  }
+
+  if (authStore.hasRole('departmenthead', 'admin')) return true
+
+  return false
 })
 
 // Paginación
@@ -207,15 +223,27 @@ async function loadInitialProjectForStaff() {
   errorMessage.value = ''
   isEmptyState.value = false
   try {
-    const endpoint = isAdvisor.value
+    let endpoint = isAdvisor.value
       ? '/v1/projects/advisor/me?pageSize=50'
       : '/v1/projects?pageSize=50'
+    if (authStore.isCareerHead) {
+      endpoint = '/v1/projects/advisor/me?pageSize=50'
+    }
     const res = await apiClient.get(endpoint)
     const rawData = res.data
     let list = Array.isArray(rawData)
       ? rawData
       : (rawData && Array.isArray(rawData.items) ? rawData.items : [])
     list = list.filter((p) => (p.status || '').toLowerCase() !== 'draft')
+
+    if (list.length === 0 && authStore.isCareerHead && authStore.userCareerId) {
+      const careerRes = await apiClient.get(`/v1/projects?pageSize=50&careerId=${authStore.userCareerId}`)
+      const careerData = careerRes.data
+      list = Array.isArray(careerData)
+        ? careerData
+        : (careerData && Array.isArray(careerData.items) ? careerData.items : [])
+      list = list.filter((p) => (p.status || '').toLowerCase() !== 'draft')
+    }
 
     if (list.length === 0) {
       isEmptyState.value = true
@@ -418,9 +446,10 @@ function changePage(page) {
 
 // Modal Registrar Calificación
 function openCreateModal() {
+  const resolvedAdvisorId = currentProject.value?.advisorId || authStore.userAdvisorId || null
   createForm.value = {
     projectId: currentProject.value?.id || null,
-    evaluatorId: currentProject.value?.advisorId || null,
+    evaluatorId: resolvedAdvisorId,
     evaluationPeriod: 'partial_1',
     score: null,
     feedback: '',
@@ -428,8 +457,8 @@ function openCreateModal() {
   createInitialProject.value = currentProject.value
     ? { id: currentProject.value.id, title: currentProject.value.title || 'Anteproyecto' }
     : null
-  createInitialAdvisor.value = currentProject.value?.advisorId
-    ? { id: currentProject.value.advisorId, fullName: currentProject.value.advisorName || 'Asesor' }
+  createInitialAdvisor.value = resolvedAdvisorId
+    ? { id: resolvedAdvisorId, fullName: currentProject.value?.advisorName || authStore.userDisplayName || 'Asesor' }
     : null
   isCreateModalOpen.value = true
 }

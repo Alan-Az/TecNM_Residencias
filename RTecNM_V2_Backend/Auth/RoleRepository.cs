@@ -538,16 +538,24 @@ public class RoleRepository : IRoleRepository
     {
         var existing = await _context.CareerHeads.FirstOrDefaultAsync(c => c.UserId == userId);
         var namePart = (email ?? "").Split('@')[0];
+        string resolvedFullName;
+        string resolvedTitle;
+        long resolvedCareerId = careerId > 0 ? careerId : 1;
+        string? resolvedPhone;
 
         if (existing == null)
         {
+            resolvedFullName = !string.IsNullOrWhiteSpace(fullName) ? fullName.Trim() : namePart;
+            resolvedTitle = !string.IsNullOrWhiteSpace(title) ? title.Trim() : "Jefe de Carrera";
+            resolvedPhone = phone?.Trim();
+
             _context.CareerHeads.Add(new CareerHead
             {
                 UserId = userId,
-                FullName = !string.IsNullOrWhiteSpace(fullName) ? fullName.Trim() : namePart,
-                Title = !string.IsNullOrWhiteSpace(title) ? title.Trim() : "Jefe de Carrera",
-                CareerId = careerId > 0 ? careerId : 1,
-                Phone = phone?.Trim(),
+                FullName = resolvedFullName,
+                Title = resolvedTitle,
+                CareerId = resolvedCareerId,
+                Phone = resolvedPhone,
                 IsActive = true,
                 IsVisible = true,
                 CreatedAt = DateTime.UtcNow,
@@ -564,13 +572,30 @@ public class RoleRepository : IRoleRepository
             existing.UpdatedAt = DateTime.UtcNow;
             existing.UpdatedBy = updatedByUserId;
             _context.CareerHeads.Update(existing);
+
+            resolvedFullName = existing.FullName;
+            resolvedTitle = existing.Title ?? "Jefe de Carrera";
+            resolvedCareerId = existing.CareerId > 0 ? existing.CareerId : 1;
+            resolvedPhone = existing.Phone;
         }
         await _context.SaveChangesAsync();
+
+        // Garantizar perfil dual en tabla advisors para asignación y seguimiento de residentes
+        await EnsureAdvisorProfileAsync(
+            userId,
+            email ?? string.Empty,
+            resolvedFullName,
+            resolvedTitle,
+            resolvedCareerId,
+            resolvedPhone,
+            (int)AdvisorType.Internal,
+            createdByUserId,
+            updatedByUserId);
     }
 
     public async Task CleanupProfilesForUserAsync(long userId, UserRole role)
     {
-        if (role != UserRole.Advisor && role != UserRole.Academic)
+        if (role != UserRole.Advisor && role != UserRole.Academic && role != UserRole.CareerHead)
         {
             var advisors = await _context.Advisors.Where(a => a.UserId == userId).ToListAsync();
             if (advisors.Any())

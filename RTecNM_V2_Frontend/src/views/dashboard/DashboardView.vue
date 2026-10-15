@@ -132,6 +132,39 @@ const assignmentCoveragePercent = computed(() => {
 const selectedAdvisorForModal = ref(null)
 const isWorkloadModalOpen = ref(false)
 
+// Pestañas de Alto Nivel para Jefe de Carrera (Gestión vs Mis Asesorías)
+const activeCareerHeadTab = ref(
+  localStorage.getItem('tecnm_ch_active_tab') === 'asesoria' ? 'asesoria' : 'jefatura'
+)
+
+watch(activeCareerHeadTab, (val) => {
+  try {
+    localStorage.setItem('tecnm_ch_active_tab', val)
+  } catch {}
+})
+
+const jefaturaPendingBadge = computed(() => {
+  const unassigned = effectiveUnassignedCount.value || 0
+  const pendingDictamen = (adminMetrics.value?.pendingProjects ?? pendingProjects.value?.length ?? 0)
+  return unassigned + pendingDictamen
+})
+
+const advisorActiveCount = computed(() => advisorProjects.value.length)
+
+const advisorApprovedOrProgressCount = computed(() => {
+  return advisorProjects.value.filter((p) => {
+    const st = String(p.status || '').toLowerCase()
+    return st === 'approved' || st === 'inprogress' || st === 'in_progress'
+  }).length
+})
+
+const advisorReviewOrPendingCount = computed(() => {
+  return advisorProjects.value.filter((p) => {
+    const st = String(p.status || '').toLowerCase()
+    return st === 'under_review' || st === 'underreview' || st === 'pending' || st === 'draft'
+  }).length
+})
+
 const collapsedTables = ref({
   pendingAcceptance: true,
   adminRecent: true,
@@ -139,6 +172,7 @@ const collapsedTables = ref({
   careerMonitor: true,
   careerUnassigned: true,
   careerProjects: true,
+  careerAdvisorProjects: false,
   deptPending: true,
   deptRecent: true,
   vinculacionCompanies: true,
@@ -224,7 +258,7 @@ const recentActiveProjects = computed(() => {
 const welcomeTitle = computed(() => {
   const role = authStore.currentRole
   if (role === 'admin') return 'Panel de Administración General'
-  if (role === 'jefecarrera') return 'Panel de Jefatura de Carrera'
+  if (role === 'jefecarrera') return 'Panel de Jefatura y Asesoría Académica'
   if (role === 'coordinadora' || role === 'coordinator') return 'Panel de Coordinación de Carrera'
   if (role === 'departmenthead' || role === 'academic') return 'Panel de la División Académica'
   if (role === 'vinculacion') return 'Panel de Gestión Tecnológica y Vinculación'
@@ -237,7 +271,7 @@ const welcomeTitle = computed(() => {
 const welcomeDescription = computed(() => {
   const role = authStore.currentRole
   if (role === 'admin') return 'Gestión institucional de alumnos, asesores, anteproyectos y reportes de residencia.'
-  if (role === 'jefecarrera') return 'Asignación de asesores y seguimiento académico de los residentes de tu carrera.'
+  if (role === 'jefecarrera') return 'Gestión departamental de carrera y seguimiento académico de los residentes a tu cargo.'
   if (role === 'coordinadora' || role === 'coordinator') return 'Consulta de seguimiento académico y anteproyectos de tus carreras asignadas.'
   if (role === 'departmenthead' || role === 'academic') return 'Revisión y dictamen de anteproyectos, asignación de asesores y avance académico.'
   if (role === 'vinculacion') return 'Gestión de empresas receptoras, cartas de presentación, convenios y expedientes.'
@@ -630,7 +664,13 @@ async function loadDashboard() {
             .catch(() => { careerStudents.value = [] }),
           apiClient.get('/v1/advisors', { params: { pageSize: 100 } })
             .then((res) => { careerAdvisors.value = res.data?.items || [] })
-            .catch(() => { careerAdvisors.value = [] })
+            .catch(() => { careerAdvisors.value = [] }),
+          apiClient.get('/v1/projects/advisor/me', { params: { pageNumber: 1, pageSize: 50 } })
+            .then((res) => {
+              const rawItems = res.data?.items || (Array.isArray(res.data) ? res.data : [])
+              advisorProjects.value = rawItems.filter((p) => p.isActive !== false)
+            })
+            .catch(() => { advisorProjects.value = [] })
         )
         recentProjects.value = recentProjects.value.filter((p) => String(p.status || '').toLowerCase() !== 'draft')
         pendingProjects.value = pendingProjects.value.filter((p) => String(p.status || '').toLowerCase() !== 'draft')
@@ -712,6 +752,43 @@ onMounted(() => {
       <div>
         <h1 id="welcomeTitle" class="tecnm-page-title">{{ welcomeTitle }}</h1>
         <p id="welcomeDescription" class="tecnm-page-subtitle">{{ welcomeDescription }}</p>
+      </div>
+
+      <!-- Switch de Modo para Jefe de Carrera alineado a la derecha a la misma altura -->
+      <div v-if="authStore.isCareerHead" class="ch-workspace-pills" role="tablist" aria-label="Modo de trabajo">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeCareerHeadTab === 'jefatura'"
+          class="ch-workspace-btn"
+          :class="{ 'ch-workspace-btn--active': activeCareerHeadTab === 'jefatura' }"
+          @click="activeCareerHeadTab = 'jefatura'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="ch-workspace-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
+          </svg>
+          <span class="ch-workspace-label">Gestión de Jefatura</span>
+          <span v-if="jefaturaPendingBadge > 0" class="ch-workspace-badge ch-workspace-badge--warning" title="Pendientes de asignación o dictamen">
+            {{ jefaturaPendingBadge }}
+          </span>
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeCareerHeadTab === 'asesoria'"
+          class="ch-workspace-btn"
+          :class="{ 'ch-workspace-btn--active': activeCareerHeadTab === 'asesoria' }"
+          @click="activeCareerHeadTab = 'asesoria'"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" class="ch-workspace-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.75" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
+          </svg>
+          <span class="ch-workspace-label">Mis Asesorías</span>
+          <span v-if="advisorActiveCount > 0" class="ch-workspace-badge ch-workspace-badge--primary" title="Residentes asignados a tu cargo">
+            {{ advisorActiveCount }}
+          </span>
+        </button>
       </div>
 
       <!-- Filtro moderno de carrera para Staff y Jefes de División -->
@@ -797,7 +874,7 @@ onMounted(() => {
         :value="adminMetrics.totalProjects"
         variant="navy"
         :loading="isLoading"
-        to="/projects"
+        to="/projects/review"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -811,7 +888,7 @@ onMounted(() => {
         :value="adminMetrics.pendingProjects"
         variant="gold"
         :loading="isLoading"
-        to="/projects"
+        to="/projects/review"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -825,6 +902,7 @@ onMounted(() => {
         :value="adminMetrics.completedResidencies"
         variant="emerald"
         :loading="isLoading"
+        to="/projects/review"
       >
         <template #icon>
           <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
@@ -844,7 +922,7 @@ onMounted(() => {
         :value="adminMetrics.pendingProjects ?? 0"
         variant="gold"
         :loading="isLoading"
-        to="/projects"
+        to="/projects/review"
         subtext="Requieren resolución de Academia"
       >
         <template #icon>
@@ -859,7 +937,7 @@ onMounted(() => {
         :value="adminMetrics.approvedProjects ?? 0"
         variant="navy"
         :loading="isLoading"
-        to="/projects"
+        to="/projects/review"
         subtext="En proceso de residencia"
       >
         <template #icon>
@@ -889,6 +967,7 @@ onMounted(() => {
         :value="adminMetrics.completedResidencies ?? 0"
         variant="emerald"
         :loading="isLoading"
+        to="/projects/review"
         subtext="Concluidas con éxito"
       >
         <template #icon>
@@ -899,71 +978,140 @@ onMounted(() => {
       </TecnmKpiCard>
     </div>
 
-    <!-- B.1 KPIs PARA JEFE DE CARRERA -->
-    <div
-      v-else-if="authStore.isCareerHead"
-      class="tecnm-kpis-grid tecnm-kpis-grid--4"
-    >
-      <TecnmKpiCard
-        title="Alumnos Aptos para Residencia"
-        :value="adminMetrics.aptStudents ?? 0"
-        variant="navy"
-        :loading="isLoading"
-        to="/students"
-        :subtext="`${adminMetrics.totalStudents ?? careerStudents.length ?? 0} alumnos registrados`"
+    <!-- B.1 KPIs PARA JEFE DE CARRERA: GESTIÓN O ASESORÍA -->
+    <template v-else-if="authStore.isCareerHead">
+      <!-- MODO JEFATURA -->
+      <div
+        v-if="activeCareerHeadTab === 'jefatura'"
+        class="tecnm-kpis-grid tecnm-kpis-grid--4"
       >
-        <template #icon>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
-          </svg>
-        </template>
-      </TecnmKpiCard>
+        <TecnmKpiCard
+          title="Alumnos Aptos para Residencia"
+          :value="adminMetrics.aptStudents ?? 0"
+          variant="navy"
+          :loading="isLoading"
+          to="/students"
+          :subtext="`${adminMetrics.totalStudents ?? careerStudents.length ?? 0} alumnos registrados`"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 19.128a9.38 9.38 0 0 0 2.625.372 9.337 9.337 0 0 0 4.121-.952 4.125 4.125 0 0 0-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 0 1 8.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0 1 11.964-3.07M12 6.375a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0Zm8.25 2.25a2.625 2.625 0 1 1-5.25 0 2.625 2.625 0 0 1 5.25 0Z" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
 
-      <TecnmKpiCard
-        title="Asesores de la Carrera"
-        :value="adminMetrics.activeAdvisors ?? careerAdvisors.length ?? 0"
-        variant="slate"
-        :loading="isLoading"
-        to="/advisors"
-        subtext="Docentes adscritos"
-      >
-        <template #icon>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
-          </svg>
-        </template>
-      </TecnmKpiCard>
+        <TecnmKpiCard
+          title="Asesores de la Carrera"
+          :value="adminMetrics.activeAdvisors ?? careerAdvisors.length ?? 0"
+          variant="slate"
+          :loading="isLoading"
+          to="/advisors"
+          subtext="Docentes adscritos"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
 
-      <TecnmKpiCard
-        title="Alumnos Asignados"
-        :value="adminMetrics.studentsWithAdvisor ?? assignedStudentsCount ?? 0"
-        variant="gold"
-        :loading="isLoading"
-        to="/advisors/assignments"
-        :subtext="`${adminMetrics.studentsWithoutAdvisor ?? unassignedStudents.length ?? 0} pendientes por asignar`"
-      >
-        <template #icon>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-          </svg>
-        </template>
-      </TecnmKpiCard>
+        <TecnmKpiCard
+          title="Alumnos Asignados"
+          :value="adminMetrics.studentsWithAdvisor ?? assignedStudentsCount ?? 0"
+          variant="gold"
+          :loading="isLoading"
+          to="/advisors/assignments"
+          :subtext="`${adminMetrics.studentsWithoutAdvisor ?? unassignedStudents.length ?? 0} pendientes por asignar`"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
 
-      <TecnmKpiCard
-        title="Anteproyectos Activos"
-        :value="adminMetrics.totalProjects ?? careerHeadActiveProjects.length ?? 0"
-        variant="emerald"
-        :loading="isLoading"
-        to="/projects/review"
-        :subtext="`${adminMetrics.pendingProjects ?? 0} en dictamen`"
+        <TecnmKpiCard
+          title="Anteproyectos Activos"
+          :value="adminMetrics.totalProjects ?? careerHeadActiveProjects.length ?? 0"
+          variant="emerald"
+          :loading="isLoading"
+          to="/projects/review"
+          :subtext="`${adminMetrics.pendingProjects ?? 0} en dictamen`"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
+      </div>
+
+      <!-- MODO MIS ASESORÍAS DOCENTES -->
+      <div
+        v-else
+        class="tecnm-kpis-grid tecnm-kpis-grid--4"
       >
-        <template #icon>
-          <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-          </svg>
-        </template>
-      </TecnmKpiCard>
-    </div>
+        <TecnmKpiCard
+          title="Mis Residentes Asesorados"
+          :value="advisorActiveCount"
+          variant="navy"
+          :loading="isLoading"
+          to="/evaluations"
+          subtext="Alumnos bajo tu asesoría"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
+
+        <TecnmKpiCard
+          title="Proyectos Activos"
+          :value="advisorApprovedOrProgressCount"
+          variant="emerald"
+          :loading="isLoading"
+          to="/evaluations"
+          subtext="En ejecución o aprobados"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
+
+        <TecnmKpiCard
+          title="Por Dictaminar / Borradores"
+          :value="advisorReviewOrPendingCount"
+          variant="gold"
+          :loading="isLoading"
+          to="/projects/review"
+          subtext="En revisión o pendientes"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
+
+        <TecnmKpiCard
+          title="Seguimiento y Actas"
+          :value="advisorActiveCount"
+          variant="slate"
+          :loading="isLoading"
+          to="/evaluations/grading"
+          subtext="Bitácoras y calificaciones"
+        >
+          <template #icon>
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M11.35 3.836c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m8.9-4.414c.376.023.75.05 1.124.08 1.131.094 1.976 1.057 1.976 2.192V16.5A2.25 2.25 0 0 1 18 18.75h-2.25m-6-15h2.25m-2.25 0H6.75A2.25 2.25 0 0 0 4.5 6v12a2.25 2.25 0 0 0 2.25 2.25h9.75" />
+            </svg>
+          </template>
+        </TecnmKpiCard>
+      </div>
+    </template>
 
     <!-- C. KPIs PARA VINCULACIÓN -->
     <div
@@ -990,7 +1138,7 @@ onMounted(() => {
         :value="adminMetrics.approvedProjects ?? 0"
         variant="emerald"
         :loading="isLoading"
-        to="/projects"
+        to="/projects/review"
         subtext="Listos para carta de presentación"
       >
         <template #icon>
@@ -1020,6 +1168,7 @@ onMounted(() => {
         :value="adminMetrics.completedResidencies ?? 0"
         variant="indigo"
         :loading="isLoading"
+        to="/projects/review"
         subtext="Con carta de liberación"
       >
         <template #icon>
@@ -1040,6 +1189,7 @@ onMounted(() => {
         :value="adminMetrics.aptStudents ?? 0"
         variant="navy"
         :loading="isLoading"
+        to="/students"
         :subtext="`${adminMetrics.totalStudents ?? 0} matrícula total registrada`"
       >
         <template #icon>
@@ -1054,6 +1204,7 @@ onMounted(() => {
         :value="adminMetrics.totalProjects > 0 ? `${Math.round(((adminMetrics.completedResidencies || 0) / adminMetrics.totalProjects) * 100)}%` : '—'"
         variant="emerald"
         :loading="isLoading"
+        to="/reports"
         subtext="Tasa de acreditación"
       >
         <template #icon>
@@ -1068,6 +1219,7 @@ onMounted(() => {
         :value="adminMetrics.activeCompanies ?? 0"
         variant="indigo"
         :loading="isLoading"
+        to="/companies"
         subtext="Sectores productivos"
       >
         <template #icon>
@@ -1082,6 +1234,7 @@ onMounted(() => {
         :value="adminMetrics.activeAdvisors ?? 0"
         variant="slate"
         :loading="isLoading"
+        to="/advisors"
         subtext="Asesores internos activos"
       >
         <template #icon>
@@ -1103,6 +1256,7 @@ onMounted(() => {
         :value="advisorTotalResidents"
         variant="navy"
         :loading="isLoading"
+        to="/evaluations"
         subtext="Bajo tu asesoría técnica"
       >
         <template #icon>
@@ -1117,6 +1271,7 @@ onMounted(() => {
         :value="advisorActiveResidents"
         variant="slate"
         :loading="isLoading"
+        to="/evaluations"
         subtext="En desarrollo de 26 semanas"
       >
         <template #icon>
@@ -1131,6 +1286,7 @@ onMounted(() => {
         :value="advisorPendingDictamen"
         variant="gold"
         :loading="isLoading"
+        to="/projects/review"
         subtext="Anteproyectos por revisar"
       >
         <template #icon>
@@ -1145,6 +1301,7 @@ onMounted(() => {
         :value="advisorCompletedResidents"
         variant="emerald"
         :loading="isLoading"
+        to="/evaluations/grading"
         subtext="Evaluadas y acreditadas"
       >
         <template #icon>
@@ -1354,7 +1511,7 @@ onMounted(() => {
                 </h3>
               </div>
               <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects" class="tecnm-link-action">
+                <router-link to="/projects/review" class="tecnm-link-action">
                   Ver todos ({{ filteredRecentProjects.length }}) &rarr;
                 </router-link>
                 <button
@@ -1400,7 +1557,7 @@ onMounted(() => {
                     </tr>
                     <tr v-for="p in topRecentProjects" v-else :key="p.id">
                       <td>
-                        <router-link :to="`/projects`" class="tecnm-table-link">
+                        <router-link :to="`/projects/review`" class="tecnm-table-link">
                           {{ p.title }}
                         </router-link>
                         <div v-if="p.companyName" class="tecnm-text-sub">
@@ -1434,7 +1591,7 @@ onMounted(() => {
                 <h3 class="tecnm-card-title">Anteproyectos Pendientes de Dictamen</h3>
               </div>
               <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects" class="tecnm-link-action">
+                <router-link to="/projects/review" class="tecnm-link-action">
                   Ver todos ({{ filteredPendingProjects.length }}) &rarr;
                 </router-link>
                 <button
@@ -1480,7 +1637,7 @@ onMounted(() => {
                       <td>{{ p.studentName || 'Estudiante' }}</td>
                       <td>{{ formatTecNMDate(p.createdAt) }}</td>
                       <td style="text-align: right;">
-                        <router-link to="/projects" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm">
+                        <router-link to="/projects/review" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm">
                           Revisar
                         </router-link>
                       </td>
@@ -1496,211 +1653,286 @@ onMounted(() => {
         <!-- VISTA JEFE DE CARRERA: SUPERVISIÓN Y CONTROL ACADÉMICO   -->
         <!-- ======================================================== -->
         <template v-else-if="authStore.isCareerHead">
-          <!-- Widget 1: Monitor de Cobertura de Asignación de Asesores -->
-          <div class="tecnm-card" style="margin-bottom: 1.5rem;">
-            <div class="tecnm-card-header">
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-                </svg>
-                <h3 class="tecnm-card-title">Monitor de Cobertura de Asesorías Académicas</h3>
-              </div>
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/advisors/assignments" class="tecnm-link-action">
-                  Asignar Asesores &rarr;
-                </router-link>
-                <button
-                  type="button"
-                  class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
-                  style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
-                  :title="collapsedTables.careerMonitor ? 'Expandir widget' : 'Colapsar widget'"
-                  @click="toggleTableCollapse('careerMonitor')"
-                >
-                  <span>{{ collapsedTables.careerMonitor ? 'Mostrar' : 'Ocultar' }}</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    :style="{ transform: collapsedTables.careerMonitor ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          <!-- ============================================== -->
+          <!-- PESTAÑA 1: GESTIÓN DE JEFATURA                 -->
+          <!-- ============================================== -->
+          <div v-if="activeCareerHeadTab === 'jefatura'">
+            <!-- Widget: Alumnos Pendientes de Asignar Asesor (Más recientes) -->
+            <div v-if="unassignedStudents.length > 0" class="tecnm-card" style="margin-bottom: 1.5rem;">
+              <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon tecnm-header-icon--gold" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
                   </svg>
-                </button>
-              </div>
-            </div>
-            <div v-show="!collapsedTables.careerMonitor" class="tecnm-card-body">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
-                <span style="font-size: 0.9rem; font-weight: 600; color: var(--tecnm-text-primary, #0f172a);">
-                  Avance de Asignaciones: {{ effectiveAssignedCount }} de {{ eligibleStudentsCount }} Alumnos Listos ({{ assignmentCoveragePercent }}%)
-                </span>
-                <span :class="effectiveUnassignedCount === 0 ? 'tecnm-badge tecnm-badge-success' : 'tecnm-badge tecnm-badge-warning'">
-                  {{ effectiveUnassignedCount === 0 ? '100% Asignados' : `${effectiveUnassignedCount} Pendiente(s)` }}
-                </span>
-              </div>
-              <!-- Barra de progreso visual -->
-              <div style="width: 100%; height: 10px; background-color: #e2e8f0; border-radius: 9999px; overflow: hidden; margin-bottom: 1rem;">
-                <div
-                  :style="{ width: `${assignmentCoveragePercent}%`, height: '100%', backgroundColor: assignmentCoveragePercent === 100 ? '#10b981' : '#f59e0b', transition: 'width 0.4s ease' }"
-                ></div>
-              </div>
-              <div style="display: flex; gap: 1.5rem; font-size: 0.825rem; color: var(--tecnm-text-secondary, #64748b);">
-                <div style="display: flex; align-items: center; gap: 0.35rem;">
-                  <span style="width: 10px; height: 10px; border-radius: 50%; background-color: #10b981; display: inline-block;"></span>
-                  <span>Asignados: <strong>{{ effectiveAssignedCount }}</strong></span>
+                  <h3 class="tecnm-card-title">Residentes Pendientes de Asignación</h3>
+                  <span class="tecnm-badge tecnm-badge-warning" style="font-size: 0.75rem;">
+                    {{ unassignedStudents.length }} por asignar
+                  </span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 0.35rem;">
-                  <span style="width: 10px; height: 10px; border-radius: 50%; background-color: #f59e0b; display: inline-block;"></span>
-                  <span>Por Asignar: <strong>{{ effectiveUnassignedCount }}</strong></span>
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <router-link to="/advisors/assignments" class="tecnm-link-action">
+                    Asignar Asesores &rarr;
+                  </router-link>
+                  <button
+                    type="button"
+                    class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
+                    style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
+                    :title="collapsedTables.careerUnassigned ? 'Expandir lista' : 'Colapsar lista'"
+                    @click="toggleTableCollapse('careerUnassigned')"
+                  >
+                    <span>{{ collapsedTables.careerUnassigned ? 'Mostrar' : 'Ocultar' }}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      :style="{ transform: collapsedTables.careerUnassigned ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
                 </div>
               </div>
-            </div>
-          </div>
-
-          <!-- Widget 2: Alumnos Pendientes de Asignar Asesor (Más recientes) -->
-          <div v-if="unassignedStudents.length > 0" class="tecnm-card" style="margin-bottom: 1.5rem;">
-            <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon tecnm-header-icon--gold" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m9-.75a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 3.75h.008v.008H12v-.008Z" />
-                </svg>
-                <h3 class="tecnm-card-title">Residentes Pendientes de Asignación</h3>
-                <span class="tecnm-badge tecnm-badge-warning" style="font-size: 0.75rem;">
-                  {{ unassignedStudents.length }} por asignar
-                </span>
-              </div>
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/advisors/assignments" class="tecnm-link-action">
-                  Asignar Asesores &rarr;
-                </router-link>
-                <button
-                  type="button"
-                  class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
-                  style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
-                  :title="collapsedTables.careerUnassigned ? 'Expandir lista' : 'Colapsar lista'"
-                  @click="toggleTableCollapse('careerUnassigned')"
-                >
-                  <span>{{ collapsedTables.careerUnassigned ? 'Mostrar' : 'Ocultar' }}</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    :style="{ transform: collapsedTables.careerUnassigned ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
+              <div v-show="!collapsedTables.careerUnassigned" class="tecnm-card-body tecnm-p-0">
+                <ul class="list-panel">
+                  <li
+                    v-for="stu in recentUnassignedStudents"
+                    :key="stu.id"
+                    class="list-panel-item"
+                    style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 1rem;"
                   >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            <div v-show="!collapsedTables.careerUnassigned" class="tecnm-card-body tecnm-p-0">
-              <ul class="list-panel">
-                <li
-                  v-for="stu in recentUnassignedStudents"
-                  :key="stu.id"
-                  class="list-panel-item"
-                  style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 1rem;"
-                >
-                  <div style="display: flex; align-items: center; gap: 0.875rem; min-width: 0;">
-                    <div style="width: 36px; height: 36px; border-radius: 50%; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;">
-                      {{ (stu.fullName || stu.firstName || 'E').charAt(0).toUpperCase() }}
-                    </div>
-                    <div style="min-width: 0;">
-                      <strong style="color: var(--tecnm-text-primary, #0f172a); font-size: 0.9rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        {{ stu.fullName || `${stu.firstName} ${stu.lastName}` }}
-                      </strong>
-                      <div class="tecnm-text-sub" style="font-size: 0.775rem;">
-                        No. Control: <strong>{{ stu.controlNumber }}</strong>
+                    <div style="display: flex; align-items: center; gap: 0.875rem; min-width: 0;">
+                      <div style="width: 36px; height: 36px; border-radius: 50%; background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0;">
+                        {{ (stu.fullName || stu.firstName || 'E').charAt(0).toUpperCase() }}
+                      </div>
+                      <div style="min-width: 0;">
+                        <strong style="color: var(--tecnm-text-primary, #0f172a); font-size: 0.9rem; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                          {{ stu.fullName || `${stu.firstName} ${stu.lastName}` }}
+                        </strong>
+                        <div class="tecnm-text-sub" style="font-size: 0.775rem;">
+                          No. Control: <strong>{{ stu.controlNumber }}</strong>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <router-link to="/advisors/assignments" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm" style="flex-shrink: 0;">
-                    Asignar &rarr;
+                    <router-link to="/advisors/assignments" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm" style="flex-shrink: 0;">
+                      Asignar &rarr;
+                    </router-link>
+                  </li>
+                </ul>
+                <div v-if="unassignedStudents.length > 3" style="padding: 0.625rem 1.25rem; background: var(--tecnm-gray-50, #f8fafc); border-top: 1px solid var(--tecnm-border-color, #e2e8f0); text-align: right;">
+                  <router-link to="/advisors/assignments" style="font-size: 0.8rem; font-weight: 600; color: var(--tecnm-blue-primary, #1B396A);">
+                    Ver los {{ unassignedStudents.length - 3 }} pendientes restantes en Asignación &rarr;
                   </router-link>
-                </li>
-              </ul>
-              <div v-if="unassignedStudents.length > 3" style="padding: 0.625rem 1.25rem; background: var(--tecnm-gray-50, #f8fafc); border-top: 1px solid var(--tecnm-border-color, #e2e8f0); text-align: right;">
-                <router-link to="/advisors/assignments" style="font-size: 0.8rem; font-weight: 600; color: var(--tecnm-blue-primary, #1B396A);">
-                  Ver los {{ unassignedStudents.length - 3 }} pendientes restantes en Asignación &rarr;
-                </router-link>
+                </div>
+              </div>
+            </div>
+
+            <!-- Widget 3: Supervisión de Anteproyectos de la Carrera (Más recientes) -->
+            <div class="tecnm-card">
+              <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                  <h3 class="tecnm-card-title">Supervisión de Anteproyectos Recientes</h3>
+                </div>
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <router-link to="/projects/review" class="tecnm-link-action">
+                    Ver todos ({{ careerHeadActiveProjects.length }}) &rarr;
+                  </router-link>
+                  <button
+                    type="button"
+                    class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
+                    style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
+                    :title="collapsedTables.careerProjects ? 'Expandir lista' : 'Colapsar lista'"
+                    @click="toggleTableCollapse('careerProjects')"
+                  >
+                    <span>{{ collapsedTables.careerProjects ? 'Mostrar' : 'Ocultar' }}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      :style="{ transform: collapsedTables.careerProjects ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div v-show="!collapsedTables.careerProjects" class="tecnm-card-body tecnm-p-0">
+                <div v-if="isLoading" style="padding: 2rem; text-align: center; color: var(--tecnm-text-muted);">
+                  Cargando anteproyectos...
+                </div>
+                <div v-else-if="careerHeadActiveProjects.length === 0" style="padding: 2rem; text-align: center; color: var(--tecnm-text-muted); font-size: 0.875rem;">
+                  No hay anteproyectos activos registrados actualmente para tu carrera.
+                </div>
+                <ul v-else class="list-panel">
+                  <li
+                    v-for="p in recentActiveProjects"
+                    :key="p.id"
+                    class="list-panel-item"
+                    style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 1rem;"
+                  >
+                    <div style="flex: 1; min-width: 0;">
+                      <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
+                        <strong style="color: var(--tecnm-text-primary, #0f172a); font-size: 0.9rem;">
+                          {{ p.title }}
+                        </strong>
+                        <TecnmBadge :status="p.status" style="flex-shrink: 0;" />
+                      </div>
+                      <div class="tecnm-text-sub" style="font-size: 0.8rem; display: flex; gap: 0.875rem; flex-wrap: wrap;">
+                        <span>Estudiante: <strong>{{ p.studentName || 'Estudiante' }}</strong> ({{ p.studentControlNumber }})</span>
+                        <span v-if="p.companyName">• Empresa: {{ p.companyName }}</span>
+                        <span>• Asesor: <strong>{{ p.advisorName || 'Por Asignar' }}</strong></span>
+                      </div>
+                    </div>
+                    <router-link to="/projects/review" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="flex-shrink: 0;">
+                      Ver Detalle
+                    </router-link>
+                  </li>
+                </ul>
               </div>
             </div>
           </div>
 
-          <!-- Widget 3: Supervisión de Anteproyectos de la Carrera (Más recientes) -->
-          <div class="tecnm-card">
-            <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                </svg>
-                <h3 class="tecnm-card-title">Supervisión de Anteproyectos Recientes</h3>
-              </div>
-              <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects/review" class="tecnm-link-action">
-                  Ver todos ({{ careerHeadActiveProjects.length }}) &rarr;
-                </router-link>
-                <button
-                  type="button"
-                  class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
-                  style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
-                  :title="collapsedTables.careerProjects ? 'Expandir lista' : 'Colapsar lista'"
-                  @click="toggleTableCollapse('careerProjects')"
-                >
-                  <span>{{ collapsedTables.careerProjects ? 'Mostrar' : 'Ocultar' }}</span>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    :style="{ transform: collapsedTables.careerProjects ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
-                  >
-                    <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+          <!-- ============================================== -->
+          <!-- PESTAÑA 2: MIS ASESORÍAS ACADÉMICAS            -->
+          <!-- ============================================== -->
+          <div v-else>
+            <!-- Widget 4: Mi Asesoría Académica (Residentes Asignados Directamente) -->
+            <div class="tecnm-card" style="margin-bottom: 1.5rem; border-top: 3px solid var(--tecnm-blue-primary, #1B396A);">
+              <div class="tecnm-card-header">
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="tecnm-header-icon tecnm-header-icon--gold" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4.26 10.147a60.438 60.438 0 0 0-.491 6.347A48.62 48.62 0 0 1 12 20.904a48.62 48.62 0 0 1 8.232-4.41 60.46 60.46 0 0 0-.491-6.347m-15.482 0a50.636 50.636 0 0 0-2.658-.813A59.906 59.906 0 0 1 12 3.493a59.903 59.903 0 0 1 10.399 5.84c-.896.248-1.783.52-2.658.814m-15.482 0A50.717 50.717 0 0 1 12 13.489a50.702 50.702 0 0 1 7.74-3.342M6.75 15a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm0 0v-3.675A55.378 55.378 0 0 1 12 8.443m-7.007 11.55A5.981 5.981 0 0 0 6.75 15.75v-1.5" />
                   </svg>
-                </button>
-              </div>
-            </div>
-            <div v-show="!collapsedTables.careerProjects" class="tecnm-card-body tecnm-p-0">
-              <div v-if="isLoading" style="padding: 2rem; text-align: center; color: var(--tecnm-text-muted);">
-                Cargando anteproyectos...
-              </div>
-              <div v-else-if="careerHeadActiveProjects.length === 0" style="padding: 2rem; text-align: center; color: var(--tecnm-text-muted); font-size: 0.875rem;">
-                No hay anteproyectos activos registrados actualmente para tu carrera.
-              </div>
-              <ul v-else class="list-panel">
-                <li
-                  v-for="p in recentActiveProjects"
-                  :key="p.id"
-                  class="list-panel-item"
-                  style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1.25rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 1rem;"
-                >
-                  <div style="flex: 1; min-width: 0;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; flex-wrap: wrap;">
-                      <strong style="color: var(--tecnm-text-primary, #0f172a); font-size: 0.9rem;">
-                        {{ p.title }}
-                      </strong>
-                      <TecnmBadge :status="p.status" style="flex-shrink: 0;" />
-                    </div>
-                    <div class="tecnm-text-sub" style="font-size: 0.8rem; display: flex; gap: 0.875rem; flex-wrap: wrap;">
-                      <span>Estudiante: <strong>{{ p.studentName || 'Estudiante' }}</strong> ({{ p.studentControlNumber }})</span>
-                      <span v-if="p.companyName">• Empresa: {{ p.companyName }}</span>
-                      <span>• Asesor: <strong>{{ p.advisorName || 'Por Asignar' }}</strong></span>
+                  <div>
+                    <h3 class="tecnm-card-title">Mis Residentes Asesorados (Rol Asesor Académico)</h3>
+                    <div class="tecnm-text-sub" style="font-size: 0.78rem;">
+                      Alumnos asignados directamente a tu asesoría (de tu carrera o foráneos)
                     </div>
                   </div>
-                  <router-link to="/projects/review" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="flex-shrink: 0;">
-                    Ver Detalle
+                </div>
+                <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
+                  <span class="tecnm-badge tecnm-badge-primary">
+                    {{ advisorProjects.length }} Asignado(s)
+                  </span>
+                  <router-link to="/evaluations" class="tecnm-link-action">
+                    Bitácora &rarr;
                   </router-link>
-                </li>
-              </ul>
+                  <router-link to="/evaluations/grading" class="tecnm-link-action">
+                    Calificaciones &rarr;
+                  </router-link>
+                  <button
+                    type="button"
+                    class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
+                    style="padding: 0.2rem 0.5rem; display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem;"
+                    :title="collapsedTables.careerAdvisorProjects ? 'Expandir tabla' : 'Colapsar tabla'"
+                    @click="toggleTableCollapse('careerAdvisorProjects')"
+                  >
+                    <span>{{ collapsedTables.careerAdvisorProjects ? 'Mostrar' : 'Ocultar' }}</span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      :style="{ transform: collapsedTables.careerAdvisorProjects ? 'rotate(0deg)' : 'rotate(180deg)', transition: 'transform 0.2s ease' }"
+                    >
+                      <path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              <div v-show="!collapsedTables.careerAdvisorProjects" class="tecnm-card-body tecnm-p-0">
+                <div class="tecnm-table-responsive">
+                  <table class="tecnm-table tecnm-table-striped">
+                    <thead>
+                      <tr>
+                        <th>Estudiante</th>
+                        <th>Proyecto y Empresa</th>
+                        <th>Avance Semanal</th>
+                        <th>Estado</th>
+                        <th style="text-align: right;">Acciones Directas</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-if="isLoading">
+                        <td colspan="5" class="tecnm-table-empty">Cargando tus alumnos asesorados...</td>
+                      </tr>
+                      <tr v-else-if="advisorProjects.length === 0">
+                        <td colspan="5" class="tecnm-table-empty">
+                          No tienes alumnos asignados para asesorar actualmente.
+                        </td>
+                      </tr>
+                      <tr v-for="p in advisorProjects" v-else :key="p.id">
+                        <td>
+                          <strong>{{ p.studentName || 'Estudiante' }}</strong>
+                          <div class="tecnm-text-sub">
+                            {{ p.studentControlNumber ? `Ctrl: ${p.studentControlNumber}` : '' }}
+                            {{ p.careerId ? `• ${CAREERS[p.careerId]}` : '' }}
+                            <span
+                              v-if="p.careerId && authStore.userCareerId && Number(p.careerId) !== Number(authStore.userCareerId)"
+                              class="tecnm-badge tecnm-badge-secondary"
+                              style="margin-left: 0.35rem; font-size: 0.7rem;"
+                            >
+                              Otra Carrera
+                            </span>
+                          </div>
+                        </td>
+                        <td>
+                          <div class="tecnm-project-title-cell">
+                            {{ p.title }}
+                          </div>
+                          <div class="tecnm-text-sub">
+                            {{ p.companyName || 'Empresa Receptora' }}
+                          </div>
+                        </td>
+                        <td style="min-width: 140px;">
+                          <div class="tecnm-progress-header">
+                            <span>{{ getProjectWeekProgress(p) }}/{{ TOTAL_WEEKS }} sem</span>
+                            <span>{{ getProjectWeekPercent(p) }}%</span>
+                          </div>
+                          <div class="tecnm-progress-track">
+                            <div class="tecnm-progress-fill" :style="{ width: `${getProjectWeekPercent(p)}%` }"></div>
+                          </div>
+                        </td>
+                        <td>
+                          <TecnmBadge :status="p.status" />
+                        </td>
+                        <td style="text-align: right;">
+                          <div style="display: flex; gap: 0.5rem; justify-content: flex-end;">
+                            <router-link
+                              to="/evaluations"
+                              class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
+                              title="Registrar o revisar bitácora de asesorías"
+                            >
+                              Bitácora
+                            </router-link>
+                            <router-link
+                              to="/evaluations/grading"
+                              class="tecnm-btn tecnm-btn-primary tecnm-btn-sm"
+                              title="Calificar parcial o final"
+                            >
+                              Evaluar
+                            </router-link>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           </div>
         </template>
@@ -1718,7 +1950,7 @@ onMounted(() => {
                 <h3 class="tecnm-card-title">Bandeja de Dictamen de Anteproyectos</h3>
               </div>
               <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects" class="tecnm-link-action">
+                <router-link to="/projects/review" class="tecnm-link-action">
                   Ver todos los pendientes ({{ filteredPendingProjects.length }}) &rarr;
                 </router-link>
                 <button
@@ -1779,7 +2011,7 @@ onMounted(() => {
                         <TecnmBadge :status="p.status" />
                       </td>
                       <td style="text-align: right;">
-                        <router-link to="/projects" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm">
+                        <router-link to="/projects/review" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm">
                           Dictaminar
                         </router-link>
                       </td>
@@ -1795,7 +2027,7 @@ onMounted(() => {
             <div class="tecnm-card-header">
               <h3 class="tecnm-card-title">Anteproyectos en Seguimiento</h3>
               <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects" class="tecnm-link-action">
+                <router-link to="/projects/review" class="tecnm-link-action">
                   Ver todos &rarr;
                 </router-link>
                 <button
@@ -1930,7 +2162,7 @@ onMounted(() => {
             <div class="tecnm-card-header">
               <h3 class="tecnm-card-title">Proyectos Listos para Carta de Presentación</h3>
               <div class="tecnm-d-flex tecnm-align-center tecnm-gap-2">
-                <router-link to="/projects" class="tecnm-link-action">
+                <router-link to="/projects/review" class="tecnm-link-action">
                   Ver todos &rarr;
                 </router-link>
                 <button
@@ -2632,122 +2864,195 @@ onMounted(() => {
 
         <!-- LATERAL PARA JEFE DE CARRERA -->
         <template v-else-if="authStore.isCareerHead">
-          <!-- Card de Accesos Operativos -->
-          <div class="tecnm-card">
-            <div class="tecnm-card-header">
-              <h3 class="tecnm-card-title">Gestión de Jefatura</h3>
+          <!-- MODO JEFATURA -->
+          <template v-if="activeCareerHeadTab === 'jefatura'">
+            <!-- Card de Accesos Operativos y Cobertura de Asesorías -->
+            <div class="tecnm-card">
+              <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 class="tecnm-card-title">Gestión de Jefatura</h3>
+                <span :class="effectiveUnassignedCount === 0 ? 'tecnm-badge tecnm-badge-success' : 'tecnm-badge tecnm-badge-warning'" style="font-size: 0.75rem;">
+                  {{ assignmentCoveragePercent }}% Cobertura
+                </span>
+              </div>
+              <div class="tecnm-card-body" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <!-- Monitor de Cobertura integrado directamente sin colapsable -->
+                <div style="background: var(--tecnm-gray-50, #f8fafc); border: 1px solid var(--tecnm-border-color, #e2e8f0); border-radius: 8px; padding: 0.75rem;">
+                  <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem; font-size: 0.8rem; font-weight: 600;">
+                    <span style="color: var(--tecnm-text-primary, #0f172a);">Cobertura de Asesorías</span>
+                    <span style="color: var(--tecnm-text-secondary, #64748b);">{{ effectiveAssignedCount }} / {{ eligibleStudentsCount }}</span>
+                  </div>
+                  <div style="width: 100%; height: 8px; background-color: #e2e8f0; border-radius: 9999px; overflow: hidden; margin-bottom: 0.5rem;">
+                    <div
+                      :style="{ width: `${assignmentCoveragePercent}%`, height: '100%', backgroundColor: assignmentCoveragePercent === 100 ? '#10b981' : '#f59e0b', transition: 'width 0.4s ease' }"
+                    ></div>
+                  </div>
+                  <div style="display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--tecnm-text-secondary, #64748b);">
+                    <span>Asignados: <strong style="color: #10b981;">{{ effectiveAssignedCount }}</strong></span>
+                    <span>Pendientes: <strong style="color: #f59e0b;">{{ effectiveUnassignedCount }}</strong></span>
+                  </div>
+                </div>
+                <router-link to="/advisors/assignments" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
+                  </svg>
+                  Asignación de Asesores
+                </router-link>
+                <router-link to="/advisors" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
+                  </svg>
+                  Directorio de Asesores
+                </router-link>
+                <router-link to="/projects/review" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                  Anteproyectos de la Carrera
+                </router-link>
+              </div>
             </div>
-            <div class="tecnm-card-body" style="display: flex; flex-direction: column; gap: 0.625rem;">
-              <router-link to="/advisors/assignments" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19 7.5v3m0 0v3m0-3h3m-3 0h-3m-2.25-4.125a3.375 3.375 0 1 1-6.75 0 3.375 3.375 0 0 1 6.75 0ZM4 19.235v-.11a6.375 6.375 0 0 1 12.75 0v.109A12.318 12.318 0 0 1 10.374 21c-2.331 0-4.512-.645-6.374-1.766Z" />
-                </svg>
-                Asignación de Asesores
-              </router-link>
-              <router-link to="/advisors" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 0 0 3.741-.479 3 3 0 0 0-4.682-2.72m.94 3.198.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0 1 12 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 0 1 6 18.719m12 0a5.971 5.971 0 0 0-.941-3.197m0 0A5.995 5.995 0 0 0 12 12.75a5.995 5.995 0 0 0-5.058 2.772m0 0a3 3 0 0 0-4.681 2.72 8.986 8.986 0 0 0 3.74.477m.94-3.197a5.971 5.971 0 0 0-.94 3.197M15 6.75a3 3 0 1 1-6 0 3 3 0 0 1 6 0Zm6 3a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Zm-13.5 0a2.25 2.25 0 1 1-4.5 0 2.25 2.25 0 0 1 4.5 0Z" />
-                </svg>
-                Directorio de Asesores
-              </router-link>
-              <router-link to="/projects/review" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
-                </svg>
-                Anteproyectos de la Carrera
-              </router-link>
-            </div>
-          </div>
 
-          <!-- Card Carga de Asesorías por Docente (Extendida con buscador y capacidad) -->
-          <div class="tecnm-card" style="margin-top: 1.5rem;">
-            <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-              <div>
-                <h3 class="tecnm-card-title" style="margin-bottom: 0;">Carga de Asesorías por Docente</h3>
-                <div style="font-size: 0.775rem; color: var(--tecnm-text-secondary); margin-top: 0.2rem;">
-                  {{ careerAdvisors.length }} docentes adscritos
+            <!-- Card Carga de Asesorías por Docente (Extendida con buscador y capacidad) -->
+            <div class="tecnm-card" style="margin-top: 1.5rem;">
+              <div class="tecnm-card-header" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: gap; gap: 0.5rem;">
+                <div>
+                  <h3 class="tecnm-card-title" style="margin-bottom: 0;">Carga de Asesorías por Docente</h3>
+                  <div style="font-size: 0.775rem; color: var(--tecnm-text-secondary); margin-top: 0.2rem;">
+                    {{ careerAdvisors.length }} docentes adscritos
+                  </div>
+                </div>
+                <router-link to="/advisors" class="tecnm-link-action" style="font-size: 0.8rem;">
+                  Ver todos &rarr;
+                </router-link>
+              </div>
+
+              <!-- Buscador rápido para múltiples asesores -->
+              <div v-if="advisorWorkloadList.length > 3" style="padding: 0.625rem 1rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); background: var(--tecnm-gray-50, #f8fafc);">
+                <input
+                  v-model="advisorWorkloadSearch"
+                  type="search"
+                  placeholder="Filtrar docente por nombre..."
+                  class="tecnm-form-control tecnm-form-control-sm"
+                  style="font-size: 0.8rem; height: 2rem;"
+                />
+              </div>
+
+              <div class="tecnm-card-body tecnm-p-0" style="max-height: 440px; overflow-y: auto;">
+                <ul v-if="filteredAdvisorWorkload.length > 0" class="list-panel">
+                  <li
+                    v-for="adv in filteredAdvisorWorkload"
+                    :key="adv.id"
+                    class="list-panel-item"
+                    style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 0.75rem; cursor: pointer; transition: background-color 0.15s ease;"
+                    :title="`Ver residentes asignados a ${adv.name}`"
+                    @click="openAdvisorWorkloadModal(adv.id)"
+                  >
+                    <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1;">
+                      <div style="width: 34px; height: 34px; border-radius: 50%; background: #e0e7ff; color: #3730a3; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; flex-shrink: 0;">
+                        {{ adv.initials }}
+                      </div>
+                      <div style="min-width: 0; flex: 1;">
+                        <strong style="font-size: 0.875rem; color: var(--tecnm-text-primary, #0f172a); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                          {{ adv.name }}
+                        </strong>
+                        <div class="tecnm-text-sub" style="font-size: 0.75rem; margin-bottom: 0.25rem;">
+                          {{ adv.title || 'Docente TecNM' }}
+                        </div>
+                        <!-- Mini barra de capacidad de asesorías -->
+                        <div style="width: 100%; height: 4px; background: #e2e8f0; border-radius: 9999px; overflow: hidden;">
+                          <div
+                            :style="{
+                              width: `${adv.percent}%`,
+                              height: '100%',
+                              backgroundColor: adv.count >= 5 ? '#ef4444' : adv.count >= 3 ? '#f59e0b' : '#3b82f6',
+                              transition: 'width 0.3s ease'
+                            }"
+                          ></div>
+                        </div>
+                      </div>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; flex-shrink: 0;">
+                      <span
+                        class="tecnm-badge"
+                        :class="adv.count === 0 ? 'tecnm-badge-neutral' : adv.count >= 4 ? 'tecnm-badge-warning' : 'tecnm-badge-primary'"
+                        style="font-size: 0.75rem;"
+                      >
+                        {{ adv.count }} {{ adv.count === 1 ? 'residente' : 'residentes' }}
+                      </span>
+                      <span style="font-size: 0.7rem; color: var(--tecnm-blue-primary, #1B396A); font-weight: 600;">
+                        Ver detalle &rarr;
+                      </span>
+                    </div>
+                  </li>
+                </ul>
+                <div v-else-if="advisorWorkloadSearch" style="padding: 1.5rem; text-align: center; color: var(--tecnm-text-secondary, #64748b); font-size: 0.825rem;">
+                  No se encontraron docentes con "{{ advisorWorkloadSearch }}".
+                </div>
+                <div v-else style="padding: 1.5rem; text-align: center; color: var(--tecnm-text-secondary, #64748b); font-size: 0.875rem;">
+                  No hay asesores registrados en tu academia.
                 </div>
               </div>
-              <router-link to="/advisors" class="tecnm-link-action" style="font-size: 0.8rem;">
-                Ver todos &rarr;
-              </router-link>
-            </div>
 
-            <!-- Buscador rápido para múltiples asesores -->
-            <div v-if="advisorWorkloadList.length > 3" style="padding: 0.625rem 1rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); background: var(--tecnm-gray-50, #f8fafc);">
-              <input
-                v-model="advisorWorkloadSearch"
-                type="search"
-                placeholder="Filtrar docente por nombre..."
-                class="tecnm-form-control tecnm-form-control-sm"
-                style="font-size: 0.8rem; height: 2rem;"
-              />
-            </div>
-
-            <div class="tecnm-card-body tecnm-p-0" style="max-height: 440px; overflow-y: auto;">
-              <ul v-if="filteredAdvisorWorkload.length > 0" class="list-panel">
-                <li
-                  v-for="adv in filteredAdvisorWorkload"
-                  :key="adv.id"
-                  class="list-panel-item"
-                  style="display: flex; justify-content: space-between; align-items: center; padding: 0.875rem 1rem; border-bottom: 1px solid var(--tecnm-border-color, #e2e8f0); gap: 0.75rem; cursor: pointer; transition: background-color 0.15s ease;"
-                  :title="`Ver residentes asignados a ${adv.name}`"
-                  @click="openAdvisorWorkloadModal(adv.id)"
-                >
-                  <div style="display: flex; align-items: center; gap: 0.75rem; min-width: 0; flex: 1;">
-                    <div style="width: 34px; height: 34px; border-radius: 50%; background: #e0e7ff; color: #3730a3; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.75rem; flex-shrink: 0;">
-                      {{ adv.initials }}
-                    </div>
-                    <div style="min-width: 0; flex: 1;">
-                      <strong style="font-size: 0.875rem; color: var(--tecnm-text-primary, #0f172a); display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                        {{ adv.name }}
-                      </strong>
-                      <div class="tecnm-text-sub" style="font-size: 0.75rem; margin-bottom: 0.25rem;">
-                        {{ adv.title || 'Docente TecNM' }}
-                      </div>
-                      <!-- Mini barra de capacidad de asesorías -->
-                      <div style="width: 100%; height: 4px; background: #e2e8f0; border-radius: 9999px; overflow: hidden;">
-                        <div
-                          :style="{
-                            width: `${adv.percent}%`,
-                            height: '100%',
-                            backgroundColor: adv.count >= 5 ? '#ef4444' : adv.count >= 3 ? '#f59e0b' : '#3b82f6',
-                            transition: 'width 0.3s ease'
-                          }"
-                        ></div>
-                      </div>
-                    </div>
-                  </div>
-                  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 0.2rem; flex-shrink: 0;">
-                    <span
-                      class="tecnm-badge"
-                      :class="adv.count === 0 ? 'tecnm-badge-neutral' : adv.count >= 4 ? 'tecnm-badge-warning' : 'tecnm-badge-primary'"
-                      style="font-size: 0.75rem;"
-                    >
-                      {{ adv.count }} {{ adv.count === 1 ? 'residente' : 'residentes' }}
-                    </span>
-                    <span style="font-size: 0.7rem; color: var(--tecnm-blue-primary, #1B396A); font-weight: 600;">
-                      Ver detalle &rarr;
-                    </span>
-                  </div>
-                </li>
-              </ul>
-              <div v-else-if="advisorWorkloadSearch" style="padding: 1.5rem; text-align: center; color: var(--tecnm-text-secondary, #64748b); font-size: 0.825rem;">
-                No se encontraron docentes con "{{ advisorWorkloadSearch }}".
+              <!-- Resumen al pie del componente extendido -->
+              <div style="padding: 0.75rem 1rem; background: var(--tecnm-gray-50, #f8fafc); border-top: 1px solid var(--tecnm-border-color, #e2e8f0); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
+                <span style="color: var(--tecnm-text-secondary);">Residentes asignados: <strong>{{ assignedStudentsCount }}</strong></span>
+                <router-link to="/advisors" style="color: var(--tecnm-blue-primary, #1B396A); font-weight: 600;">
+                  Directorio completo &rarr;
+                </router-link>
               </div>
-              <div v-else style="padding: 1.5rem; text-align: center; color: var(--tecnm-text-secondary, #64748b); font-size: 0.875rem;">
-                No hay asesores registrados en tu academia.
+            </div>
+          </template>
+
+          <!-- MODO ASESORÍA -->
+          <template v-else>
+            <!-- Card Accesos Rápidos Asesor -->
+            <div class="tecnm-card">
+              <div class="tecnm-card-header">
+                <h3 class="tecnm-card-title">Acciones de Asesor</h3>
+              </div>
+              <div class="tecnm-card-body" style="display: flex; flex-direction: column; gap: 0.625rem;">
+                <router-link to="/evaluations" class="tecnm-btn tecnm-btn-primary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 0 0 6 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 0 1 6 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 0 1 6-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0 0 18 18a8.967 8.967 0 0 0-6 2.292m0-14.25v14.25" />
+                  </svg>
+                  Bitácora de Asesorías
+                </router-link>
+                <router-link to="/evaluations/grading" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
+                  </svg>
+                  Calificaciones y Actas
+                </router-link>
+                <router-link to="/projects/review" class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm" style="width: 100%; justify-content: flex-start; gap: 0.5rem;">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 0 0-3.375-3.375h-1.5A1.125 1.125 0 0 1 13.5 7.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 0 0-9-9Z" />
+                  </svg>
+                  Dictamen de Anteproyectos
+                </router-link>
               </div>
             </div>
 
-            <!-- Resumen al pie del componente extendido -->
-            <div style="padding: 0.75rem 1rem; background: var(--tecnm-gray-50, #f8fafc); border-top: 1px solid var(--tecnm-border-color, #e2e8f0); display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem;">
-              <span style="color: var(--tecnm-text-secondary);">Residentes asignados: <strong>{{ assignedStudentsCount }}</strong></span>
-              <router-link to="/advisors" style="color: var(--tecnm-blue-primary, #1B396A); font-weight: 600;">
-                Directorio completo &rarr;
-              </router-link>
+            <!-- Card Resumen de Estado de Asesorados -->
+            <div class="tecnm-card" style="margin-top: 1.5rem;">
+              <div class="tecnm-card-header">
+                <h3 class="tecnm-card-title">Resumen de Asesorados</h3>
+              </div>
+              <div class="tecnm-card-body" style="display: flex; flex-direction: column; gap: 0.75rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                  <span style="color: var(--tecnm-text-secondary);">Total a cargo:</span>
+                  <span class="tecnm-badge tecnm-badge-primary">{{ advisorProjects.length }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                  <span style="color: var(--tecnm-text-secondary);">En progreso o aprobados:</span>
+                  <span class="tecnm-badge tecnm-badge-success">{{ advisorApprovedOrProgressCount }}</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem;">
+                  <span style="color: var(--tecnm-text-secondary);">En revisión o borrador:</span>
+                  <span class="tecnm-badge tecnm-badge-warning">{{ advisorReviewOrPendingCount }}</span>
+                </div>
+              </div>
             </div>
-          </div>
+          </template>
         </template>
 
         <!-- LATERAL PARA ADMIN / STAFF / VINCULACIÓN / JEFE -->
@@ -3111,5 +3416,116 @@ onMounted(() => {
   justify-content: space-between;
   gap: 0.5rem;
   width: 100%;
+}
+
+/* ======================================================== */
+/* PESTAÑAS DE ALTO NIVEL PARA JEFE DE CARRERA              */
+/* ======================================================== */
+.ch-workspace-tabs {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+  padding: 0.75rem 1.25rem;
+  background: #ffffff;
+  border: 1px solid var(--tecnm-border-color, #e2e8f0);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.ch-workspace-pills {
+  display: inline-flex;
+  gap: 0.35rem;
+  background: var(--tecnm-gray-100, #f1f5f9);
+  padding: 0.3rem;
+  border-radius: 10px;
+  border: 1px solid var(--tecnm-border-color, #e2e8f0);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.ch-workspace-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.6rem 1.15rem;
+  border-radius: 8px;
+  border: none;
+  background: transparent;
+  color: var(--tecnm-text-secondary, #64748b);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  outline: none;
+}
+
+.ch-workspace-btn:hover:not(.ch-workspace-btn--active) {
+  color: var(--tecnm-text-primary, #0f172a);
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.ch-workspace-btn--active {
+  background: #ffffff;
+  color: var(--tecnm-blue-primary, #1B396A);
+  box-shadow: 0 2px 6px rgba(27, 57, 106, 0.12), 0 1px 2px rgba(0, 0, 0, 0.06);
+}
+
+.ch-workspace-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.ch-workspace-label {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.ch-workspace-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.4rem;
+  border-radius: 9999px;
+  line-height: 1;
+}
+
+.ch-workspace-badge--warning {
+  background-color: #fef3c7;
+  color: #92400e;
+}
+
+.ch-workspace-badge--primary {
+  background-color: #e0e7ff;
+  color: #3730a3;
+}
+
+.ch-workspace-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.825rem;
+  color: var(--tecnm-text-secondary, #64748b);
+}
+
+.ch-workspace-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.ch-workspace-dot--gold {
+  background-color: var(--tecnm-gold, #C5A059);
+}
+
+.ch-workspace-dot--navy {
+  background-color: var(--tecnm-blue-primary, #1B396A);
 }
 </style>

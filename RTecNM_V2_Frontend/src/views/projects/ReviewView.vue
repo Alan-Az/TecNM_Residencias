@@ -244,8 +244,8 @@ async function loadProjects({ silent = false } = {}) {
       search: searchTerm.value.trim() || undefined,
       includeInactive: includeInactive.value,
       includeCancelled: includeCancelled.value,
-      careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
-      advisorId: selectedAdvisorFilter.value ? Number(selectedAdvisorFilter.value) : undefined,
+      careerId: selectedCareerFilter.value !== 'all' && selectedCareerFilter.value !== 'my_advised' ? Number(selectedCareerFilter.value) : undefined,
+      advisorId: selectedCareerFilter.value === 'my_advised' ? (authStore.userAdvisorId || undefined) : (selectedAdvisorFilter.value ? Number(selectedAdvisorFilter.value) : undefined),
     }
 
     const res = await apiClient.get('/v1/projects', { params })
@@ -768,8 +768,8 @@ async function handleExportPdf() {
       sortDir: sortDir.value,
       includeInactive: includeInactive.value,
       includeCancelled: includeCancelled.value,
-      careerId: selectedCareerFilter.value !== 'all' ? Number(selectedCareerFilter.value) : undefined,
-      advisorId: selectedAdvisorFilter.value ? Number(selectedAdvisorFilter.value) : undefined,
+      careerId: selectedCareerFilter.value !== 'all' && selectedCareerFilter.value !== 'my_advised' ? Number(selectedCareerFilter.value) : undefined,
+      advisorId: selectedCareerFilter.value === 'my_advised' ? (authStore.userAdvisorId || undefined) : (selectedAdvisorFilter.value ? Number(selectedAdvisorFilter.value) : undefined),
     }
     const res = await apiClient.get('/v1/projects/export', {
       params,
@@ -863,6 +863,20 @@ onMounted(() => {
             <option v-for="(name, id) in filteredCareers" :key="id" :value="id">
               {{ name }}
             </option>
+          </select>
+        </div>
+
+        <div v-else class="tecnm-d-flex tecnm-align-center tecnm-gap-2" style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+          <label for="careerHeadReviewScope" class="tecnm-field-label" style="margin-bottom: 0; white-space: nowrap; font-size: 0.85rem;">Vista:</label>
+          <select
+            id="careerHeadReviewScope"
+            v-model="selectedCareerFilter"
+            class="tecnm-form-control"
+            style="min-width: 220px; font-size: 0.85rem;"
+            @change="pageNumber = 1; loadProjects()"
+          >
+            <option value="all">Anteproyectos de Mi Carrera</option>
+            <option value="my_advised">Anteproyectos Asesorados</option>
           </select>
         </div>
 
@@ -1017,6 +1031,14 @@ onMounted(() => {
                   <small v-if="p.careerId || p.career" style="color: var(--tecnm-blue-primary, #1b396a); font-size: 0.75rem;">
                     {{ CAREERS[p.careerId] || p.career }}
                   </small>
+                  <span
+                    v-if="authStore.isCareerHead && authStore.userCareerId && p.careerId && Number(p.careerId) !== Number(authStore.userCareerId)"
+                    class="tecnm-badge tecnm-badge-info"
+                    style="font-size: 0.68rem; margin-left: 0.35rem; display: inline-block; vertical-align: middle;"
+                    title="Estudiante de otra carrera asignado para asesoría académica"
+                  >
+                    Asesoría Externa
+                  </span>
                 </td>
                 <td>
                   <div v-if="p.advisorName && p.advisorName.trim()">

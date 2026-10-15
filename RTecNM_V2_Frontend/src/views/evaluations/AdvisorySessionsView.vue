@@ -56,19 +56,35 @@ const isProjectReadOnly = computed(() => {
   return isProjectCompleted.value || ['cancelled', 'rejected', 'pending', 'under_review', 'proposed', 'draft'].includes(st)
 })
 
+const isProjectAdvisor = computed(() => {
+  if (!currentProject.value) return false
+  const myAdvisorId = authStore.userAdvisorId
+  if (!myAdvisorId) return false
+  return currentProject.value.advisorId === myAdvisorId ||
+         currentProject.value.advisor_id === myAdvisorId ||
+         currentProject.value.studentAdvisorId === myAdvisorId
+})
+
 const canRecordSession = computed(() => {
-  if (authStore.isReadOnly || authStore.isCareerHead) return false
-  if (authStore.hasRole('academic', 'departmenthead') && !authStore.isAdmin) return false
-  if (!authStore.hasRole('admin', 'advisor')) return false
+  if (authStore.isReadOnly) return false
+  if (authStore.isAdmin) return Boolean(currentProject.value?.id)
+  if (!authStore.hasPermission('advisories.session.record')) return false
   if (!currentProject.value?.id) return false
-  if (isAdvisor.value && isProjectReadOnly.value) return false
-  return true
+  if (isProjectReadOnly.value) return false
+  if (authStore.hasRole('academic', 'departmenthead') && !authStore.isAdmin) return false
+
+  if (isAdvisor.value || authStore.isCareerHead) {
+    return isProjectAdvisor.value || authStore.isAdmin || isAdvisor.value
+  }
+
+  return false
 })
 
 const canManageSession = computed(() => {
-  if (authStore.isReadOnly || authStore.isCareerHead) return false
+  if (authStore.isReadOnly) return false
+  if (authStore.isAdmin) return true
   if (authStore.hasRole('academic', 'departmenthead') && !authStore.isAdmin) return false
-  return authStore.isAdmin || isAdvisor.value
+  return isAdvisor.value || (authStore.isCareerHead && isProjectAdvisor.value)
 })
 
 // Paginación y Filtros
@@ -211,15 +227,27 @@ async function loadInitialProjectForStaff() {
   errorMessage.value = ''
   isEmptyState.value = false
   try {
-    const endpoint = isAdvisor.value
+    let endpoint = isAdvisor.value
       ? '/v1/projects/advisor/me?pageSize=50'
       : '/v1/projects?pageSize=50'
+    if (authStore.isCareerHead) {
+      endpoint = '/v1/projects/advisor/me?pageSize=50'
+    }
     const res = await apiClient.get(endpoint)
     const rawData = res.data
     let list = Array.isArray(rawData)
       ? rawData
       : (rawData && Array.isArray(rawData.items) ? rawData.items : [])
     list = list.filter((p) => (p.status || '').toLowerCase() !== 'draft')
+
+    if (list.length === 0 && authStore.isCareerHead && authStore.userCareerId) {
+      const careerRes = await apiClient.get(`/v1/projects?pageSize=50&careerId=${authStore.userCareerId}`)
+      const careerData = careerRes.data
+      list = Array.isArray(careerData)
+        ? careerData
+        : (careerData && Array.isArray(careerData.items) ? careerData.items : [])
+      list = list.filter((p) => (p.status || '').toLowerCase() !== 'draft')
+    }
 
     if (list.length === 0) {
       isEmptyState.value = true
@@ -347,19 +375,20 @@ function openCreateModal() {
     showAlert('Debe seleccionar un proyecto válido.', 'warning')
     return
   }
+  const resolvedAdvisorId = currentProject.value.advisorId || authStore.userAdvisorId || null
   createForm.value = {
     projectId: currentProject.value.id,
-    advisorId: currentProject.value.advisorId || null,
+    advisorId: resolvedAdvisorId,
     sessionDate: new Date().toISOString().split('T')[0],
     topicsCovered: '',
     studentAgreements: '',
     studentAttended: true,
     documentId: null,
   }
-  initialAdvisor.value = currentProject.value.advisorId
+  initialAdvisor.value = resolvedAdvisorId
     ? {
-        id: currentProject.value.advisorId,
-        fullName: currentProject.value.advisorName || 'Asesor Asignado',
+        id: resolvedAdvisorId,
+        fullName: currentProject.value.advisorName || authStore.userDisplayName || 'Asesor Asignado',
       }
     : null
   isCreateModalOpen.value = true

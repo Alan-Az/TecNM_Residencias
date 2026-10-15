@@ -52,6 +52,14 @@ export const useAuthStore = defineStore('auth', () => {
     return currentRole.value === 'jefecarrera' || currentRole.value === 'careerhead'
   })
 
+  const isAdvisor = computed(() => {
+    return currentRole.value === 'advisor'
+  })
+
+  const userAdvisorId = computed(() => {
+    return user.value?.advisorId ?? user.value?.advisor_id ?? null
+  })
+
   const userCareerId = computed(() => {
     return user.value?.careerId ?? user.value?.career_id ?? null
   })
@@ -150,7 +158,7 @@ export const useAuthStore = defineStore('auth', () => {
       'activities.schedule', 'activities.progress.validate',
       'evaluations.advisories', 'advisories.session.record', 'advisories.session.view',
       'evaluations.grading', 'evaluations.grade.partial', 'evaluations.grade.final', 'evaluations.summary.view',
-      'documents.digital', 'documents.verify', 'companies.view'
+      'documents.digital', 'documents.verify'
     ],
     student: [
       'students.profile.view', 'students.profile.update',
@@ -166,20 +174,24 @@ export const useAuthStore = defineStore('auth', () => {
     jefecarrera: [
       'students.profile.view',
       'projects.review',
+      'projects.advisor',
       'projects.advisor.assign',
       'activities.schedule',
-      'evaluations.advisories', 'advisories.session.view',
-      'evaluations.summary.view',
-      'documents.digital'
+      'activities.progress.validate',
+      'evaluations.advisories', 'advisories.session.record', 'advisories.session.view',
+      'evaluations.grading', 'evaluations.grade.partial', 'evaluations.grade.final', 'evaluations.summary.view',
+      'documents.digital', 'documents.verify'
     ],
     careerhead: [
       'students.profile.view',
       'projects.review',
+      'projects.advisor',
       'projects.advisor.assign',
       'activities.schedule',
-      'evaluations.advisories', 'advisories.session.view',
-      'evaluations.summary.view',
-      'documents.digital'
+      'activities.progress.validate',
+      'evaluations.advisories', 'advisories.session.record', 'advisories.session.view',
+      'evaluations.grading', 'evaluations.grade.partial', 'evaluations.grade.final', 'evaluations.summary.view',
+      'documents.digital', 'documents.verify'
     ]
   }
 
@@ -262,13 +274,14 @@ export const useAuthStore = defineStore('auth', () => {
             sessionStorage.setItem('authUser', JSON.stringify(user.value))
           }
         }
-      } else if (currentRole.value === 'advisor') {
+      } else if (currentRole.value === 'advisor' || currentRole.value === 'jefecarrera' || currentRole.value === 'careerhead') {
         const response = await apiClient.get('/v1/advisors/me')
         const data = response.data
-        if (data?.fullName) {
+        if (data?.fullName || data?.id) {
           user.value = {
             ...user.value,
-            fullName: data.fullName
+            fullName: data.fullName || user.value.fullName,
+            advisorId: data.id || user.value.advisorId
           }
           sessionStorage.setItem('authUser', JSON.stringify(user.value))
         }
@@ -317,6 +330,8 @@ export const useAuthStore = defineStore('auth', () => {
     isReadOnly,
     isCoordinator,
     isCareerHead,
+    isAdvisor,
+    userAdvisorId,
     userCareerId,
     userCareerIds,
     roleLabel,

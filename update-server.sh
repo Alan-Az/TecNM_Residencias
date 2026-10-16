@@ -142,6 +142,15 @@ echo -e "\n${CYAN}[4/6] Aplicando actualización a los contenedores en producci�
 docker compose up -d postgres
 
 # Aplicar migraciones SQL aditivas e idempotentes si existen
+if [ -d "${SCRIPT_DIR}/docs/database/migrations" ]; then
+    for mig_file in "${SCRIPT_DIR}"/docs/database/migrations/*.sql; do
+        if [ -f "$mig_file" ]; then
+            echo -e "   ${CYAN}🗄️  Aplicando migración $(basename "$mig_file") en PostgreSQL...${NC}"
+            docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "$mig_file" > /dev/null 2>&1 || true
+        fi
+    done
+fi
+
 if [ -f "${SCRIPT_DIR}/docs/database/add_document_deadlines_to_students.sql" ]; then
     echo -e "   ${CYAN}🗄️  Asegurando columnas de fechas límite en PostgreSQL...${NC}"
     docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" < "${SCRIPT_DIR}/docs/database/add_document_deadlines_to_students.sql" > /dev/null 2>&1 || true

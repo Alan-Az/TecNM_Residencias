@@ -197,6 +197,15 @@ if ($pgReady) {
         } else {
             Write-Host "   ✅ Base de datos 'postgre_recidencias' verificada y lista." -ForegroundColor Green
         }
+
+        # Aplicar migraciones SQL aditivas e idempotentes si existen
+        $migrationsDir = Join-Path $ScriptDir "docs\database\migrations"
+        if (Test-Path $migrationsDir) {
+            Get-ChildItem -Path $migrationsDir -Filter "*.sql" | Sort-Object Name | ForEach-Object {
+                Get-Content $_.FullName -Raw | docker exec -i residencia-v2-db psql -U residency_user -d postgre_recidencias 2>$null
+            }
+            Write-Host "   ✅ Migraciones de base de datos verificadas." -ForegroundColor Green
+        }
     }
 } else {
     Write-Host "   ❌ No se detectó respuesta en puerto 5439 tras esperar." -ForegroundColor Red

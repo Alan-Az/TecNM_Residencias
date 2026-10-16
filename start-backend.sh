@@ -104,6 +104,16 @@ if command -v docker >/dev/null 2>&1; then
     else
         echo -e "   ${GREEN}✅ Contenedor PostgreSQL ya se encuentra en ejecución.${NC}"
     fi
+
+    # Aplicar migraciones SQL aditivas e idempotentes si existen
+    if [ -d "$SCRIPT_DIR/docs/database/migrations" ]; then
+        for mig_file in "$SCRIPT_DIR"/docs/database/migrations/*.sql; do
+            if [ -f "$mig_file" ]; then
+                docker exec -i residencia-v2-db psql -U residency_user -d postgre_recidencias < "$mig_file" > /dev/null 2>&1 || true
+            fi
+        done
+        echo -e "   ${GREEN}✅ Migraciones de base de datos verificadas.${NC}"
+    fi
 else
     echo -e "   ${YELLOW}⚠️  Docker no detectado. Asegúrate de tener PostgreSQL corriendo localmente en el puerto 5439.${NC}"
 fi

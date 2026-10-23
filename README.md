@@ -391,6 +391,7 @@ Construido con **Vue 3 (`<script setup>`)**, **Vite**, **Pinia**, **Vue Router**
 | `pnpm dev` / `npm run dev` | Inicia el servidor de desarrollo Vite en `http://localhost:5085` |
 | `pnpm build` / `npm run build` | Compila los assets de producción en la carpeta `dist/` |
 | `pnpm preview` / `npm run preview` | Previsualiza localmente el build de producción |
+| `pnpm test` / `npm test` | Ejecuta las pruebas unitarias y de componentes (Vitest) |
 
 ### Backend (.NET 10) y Base de Datos
 

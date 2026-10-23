@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "pnpm --dir ../RTecNM_V2_Frontend.Tests test",
+    "test:watch": "pnpm --dir ../RTecNM_V2_Frontend.Tests test:watch"
   },
   "dependencies": {
     "axios": "^1.19.0",

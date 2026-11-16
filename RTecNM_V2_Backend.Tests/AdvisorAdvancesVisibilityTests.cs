@@ -32,7 +32,6 @@ public class AdvisorAdvancesVisibilityTests
         var advisorUser = new User
         {
             Email = "profesor.asesor@monclova.tecnm.mx",
-            PasswordHash = "hash",
             Role = UserRole.Advisor,
             IsActive = true
         };
@@ -53,7 +52,6 @@ public class AdvisorAdvancesVisibilityTests
         var studentUser = new User
         {
             Email = "alumno.residente@monclova.tecnm.mx",
-            PasswordHash = "hash",
             Role = UserRole.Student,
             IsActive = true
         };

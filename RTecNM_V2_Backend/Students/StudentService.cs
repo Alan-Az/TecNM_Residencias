@@ -423,12 +423,12 @@ public class StudentService : IStudentService
         if (existingUser is not null)
             return Result<StudentResponseDto>.Failure("El correo electrónico ya está registrado", 400);
 
-        // Default initial password is ControlNumber
-        var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword(cleanControlNum);
         var newUser = new User
         {
             Email = cleanEmail,
-            PasswordHash = defaultPasswordHash,
+            FirstName = cleanFirstName,
+            LastName = cleanLastName,
+            LastName2 = cleanLastName2,
             Role = UserRole.Student,
             IsActive = true,
             CreatedBy = _currentUser.UserId
@@ -1040,11 +1040,12 @@ public class StudentService : IStudentService
                 continue;
             }
 
-            var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword(cleanControlNum);
             var newUser = new User
             {
                 Email = cleanEmail,
-                PasswordHash = defaultPasswordHash,
+                FirstName = cleanFirstName,
+                LastName = lastName1,
+                LastName2 = lastName2,
                 Role = UserRole.Student,
                 IsActive = true,
                 CreatedBy = _currentUser.UserId

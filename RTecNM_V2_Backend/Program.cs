@@ -48,6 +48,9 @@ builder.Services.AddCors(options =>
 
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
+builder.Services.Configure<LoginControlSettings>(
+    builder.Configuration.GetSection(LoginControlSettings.SectionName));
+builder.Services.AddHttpClient();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(

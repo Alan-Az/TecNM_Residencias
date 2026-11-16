@@ -16,6 +16,12 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("id")
             .ValueGeneratedOnAdd();
 
+        builder.Property(u => u.ExternalUserId)
+            .HasColumnName("external_user_id");
+
+        builder.HasIndex(u => u.ExternalUserId)
+            .IsUnique();
+
         builder.Property(u => u.Email)
             .HasColumnName("email")
             .HasMaxLength(150)
@@ -23,11 +29,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 
         builder.HasIndex(u => u.Email)
             .IsUnique();
-
-        builder.Property(u => u.PasswordHash)
-            .HasColumnName("password_hash")
-            .HasMaxLength(255)
-            .IsRequired();
 
         var roleConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<UserRole, string>(
             v => RoleToString(v),
@@ -79,13 +80,6 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.Property(u => u.LastName2)
             .HasColumnName("last_name_2")
             .HasMaxLength(100);
-
-        builder.Property(u => u.ControlNumber)
-            .HasColumnName("control_number")
-            .HasMaxLength(20);
-
-        builder.Property(u => u.CareerId)
-            .HasColumnName("career_id");
 
         builder.Property(u => u.CreatedBy)
             .HasColumnName("created_by");

@@ -16,7 +16,13 @@ public class AuthRepository : IAuthRepository
     {
         var cleanEmail = (email ?? "").Trim().ToLowerInvariant();
         return await _context.Users
-            .FirstOrDefaultAsync(u => u.Email.ToLower() == cleanEmail);
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == cleanEmail && u.DeletedAt == null);
+    }
+
+    public async Task<User?> GetByExternalUserIdAsync(Guid externalUserId)
+    {
+        return await _context.Users
+            .FirstOrDefaultAsync(u => u.ExternalUserId == externalUserId && u.DeletedAt == null);
     }
 
     public async Task<User> AddUserAsync(User user)
@@ -26,15 +32,11 @@ public class AuthRepository : IAuthRepository
         return user;
     }
 
-    public async Task UpdatePasswordHashAsync(long userId, string newHash)
+    public async Task UpdateUserAsync(User user)
     {
-        var user = await _context.Users.FindAsync(userId);
-        if (user != null)
-        {
-            user.PasswordHash = newHash;
-            user.UpdatedAt = DateTime.UtcNow;
-            await _context.SaveChangesAsync();
-        }
+        user.UpdatedAt = DateTime.UtcNow;
+        _context.Users.Update(user);
+        await _context.SaveChangesAsync();
     }
 
     public async Task<Dictionary<long, string>> GetUserDisplayNamesByIdsAsync(List<long> userIds)

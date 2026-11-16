@@ -90,6 +90,14 @@ const isCoordinatorRole = computed(() => {
   return code === 'coordinadora' || code === 'coordinator'
 })
 
+const isStudentRole = computed(() => {
+  if (!userForm.value.roleId) return false
+  const role = roleOptions.value.find((r) => r.id === parseInt(userForm.value.roleId, 10))
+  if (!role) return false
+  const code = (role.code || '').toLowerCase().replace('_', '')
+  return code === 'student' || code === 'estudiante'
+})
+
 const ALLOWED_DOMAINS = ['@monclova.tecnm.mx', '@tecnm.mx']
 const INSTITUTIONAL_EMAIL_ERROR =
   'Debes ingresar un correo institucional válido (@monclova.tecnm.mx o @tecnm.mx).'
@@ -439,12 +447,11 @@ async function handleSaveUser() {
     !isEdit &&
     (!userForm.value.firstName.trim() ||
       !userForm.value.lastName.trim() ||
-      !userForm.value.controlNumber.trim() ||
-      !userForm.value.phone.trim() ||
-      !userForm.value.password)
+      (isStudentRole.value && !userForm.value.controlNumber.trim()) ||
+      !userForm.value.phone.trim())
   ) {
     userFormError.value =
-      'Todos los campos con asterisco son obligatorios para registrar un nuevo usuario.'
+      'Todos los campos obligatorios deben completarse para registrar un nuevo usuario.'
     return
   }
 
@@ -477,12 +484,6 @@ async function handleSaveUser() {
     academicPeriodId: userForm.value.academicPeriodId ? parseInt(userForm.value.academicPeriodId, 10) : 1,
     departmentId: primaryCareerId,
     advisorType: 1,
-  }
-
-  if (isEdit) {
-    if (userForm.value.password) payload.newPassword = userForm.value.password
-  } else {
-    payload.password = userForm.value.password
   }
 
   const url = isEdit ? `/v1/roles/users/${userForm.value.userId}` : '/v1/roles/users'
@@ -1199,23 +1200,6 @@ onMounted(async () => {
                 class="tecnm-form-control"
                 placeholder="ejemplo@monclova.tecnm.mx"
                 required
-              />
-            </div>
-
-            <div class="tecnm-form-group">
-              <label
-                for="userPasswordInput"
-                class="tecnm-label"
-              >
-                {{ userForm.userId ? 'Nueva Contraseña (opcional)' : 'Contraseña de Acceso *' }}
-              </label>
-              <input
-                id="userPasswordInput"
-                v-model="userForm.password"
-                type="password"
-                class="tecnm-form-control"
-                placeholder="••••••••"
-                :required="!userForm.userId"
               />
             </div>
 

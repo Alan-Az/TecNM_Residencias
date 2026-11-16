@@ -8,6 +8,7 @@ const routes = [
   },
   {
     path: '/auth/login',
+    alias: ['/login', '/acceso'],
     name: 'Login',
     component: () => import('@/views/auth/LoginView.vue'),
     meta: { isPublic: true, title: 'Iniciar Sesión - Sistema de Residencias' },
@@ -275,8 +276,13 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
   const authStore = useAuthStore()
 
-  // Si ya está autenticado e intenta ir al login, redirigir al dashboard
-  if (to.meta.isPublic && authStore.isAuthenticated) {
+  // Permitir procesar callbacks SSO entrantes desde LoginControl aunque exista sesión previa
+  const hasSsoHandshake = Boolean(
+    to.query.ticket || to.query.code || to.query.sso_payload || to.query.sso_error
+  )
+
+  // Si ya está autenticado e intenta ir al login sin handshake SSO, redirigir al dashboard
+  if (to.meta.isPublic && authStore.isAuthenticated && !hasSsoHandshake) {
     return next({ path: '/dashboard' })
   }
 

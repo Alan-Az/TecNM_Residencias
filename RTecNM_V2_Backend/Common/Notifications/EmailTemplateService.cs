@@ -178,9 +178,10 @@ public class EmailTemplateService : IEmailTemplateService
                                 Tu perfil de estudiante ha sido dado de alta en la plataforma oficial de <strong>Residencias Profesionales</strong> del TecNM Campus Monclova.
                             </p>
                             <div style=""background-color:#f8f9fa; border-left:4px solid #C5A059; padding:16px 20px; margin:20px 0; border-radius:4px;"">
-                                <p style=""margin:0 0 8px 0; font-size:14px; color:#495057;""><strong>Tus Credenciales de Acceso:</strong></p>
-                                <p style=""margin:0 0 4px 0; font-size:14px;"">📧 <strong>Correo:</strong> <span style=""color:#1B396A;"">{email}</span></p>
-                                <p style=""margin:0; font-size:14px;"">🔑 <strong>Contraseña Inicial:</strong> Tu N° de Control (<strong>{controlNumber}</strong>)</p>
+                                <p style=""margin:0 0 8px 0; font-size:14px; color:#495057;""><strong>Tu Acceso Institucional:</strong></p>
+                                <p style=""margin:0 0 4px 0; font-size:14px;"">📧 <strong>Correo Institucional:</strong> <span style=""color:#1B396A;"">{email}</span></p>
+                                <p style=""margin:0 0 4px 0; font-size:14px;"">🎓 <strong>N° de Control:</strong> {controlNumber}</p>
+                                <p style=""margin:0; font-size:14px;"">🔐 <strong>Inicio de Sesión:</strong> Exclusivo con tu Cuenta Microsoft (<strong>@monclova.tecnm.mx</strong>) desde el Portal de Acceso TecNM.</p>
                             </div>
                             <p style=""line-height:1.6; font-size:14px; color:#6c757d;"">
                                 Te sugerimos ingresar a la plataforma para actualizar tu perfil y dar seguimiento a tu anteproyecto y expediente digital.

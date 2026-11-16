@@ -46,6 +46,12 @@ services:
       - SmtpSettings__Password=${SMTP_PASSWORD:-TU_CONTRASEÑA_AQUI}
       - SmtpSettings__EnableSsl=${SMTP_ENABLE_SSL:-true}
       - SmtpSettings__UseMockInDev=${SMTP_USE_MOCK:-true}
+      - LoginControl__ModuleId=${LOGIN_CONTROL_MODULE_ID:-}
+      - LoginControl__ApiKey=${LOGIN_CONTROL_API_KEY:-}
+      - LoginControl__PublicBaseUrl=${LOGIN_CONTROL_PUBLIC_BASE_URL:-http://localhost:5140}
+      - LoginControl__InternalBaseUrl=${LOGIN_CONTROL_INTERNAL_BASE_URL:-http://host.docker.internal:5140}
+      - LoginControl__LoginPortalUrl=${LOGIN_CONTROL_PORTAL_URL:-http://localhost:5173/login}
+      - LoginControl__FrontendBaseUrl=${LOGIN_CONTROL_FRONTEND_BASE_URL:-http://localhost:5085}
     volumes:
       - ./RTecNM_V2_Backend/uploads:/app/uploads
     depends_on:

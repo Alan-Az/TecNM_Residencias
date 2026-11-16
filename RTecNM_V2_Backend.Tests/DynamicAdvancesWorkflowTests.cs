@@ -48,7 +48,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s1@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s1@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -84,7 +84,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s2@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s2@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -115,7 +115,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s3@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s3@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -157,7 +157,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s4@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s4@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -212,7 +212,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s5@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s5@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -246,7 +246,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s6@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s6@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 
@@ -283,7 +283,7 @@ public class DynamicAdvancesWorkflowTests
     {
         using var db = CreateInMemoryDbContext();
 
-        var studentUser = new User { Email = "s7@tecnm.mx", PasswordHash = "h", Role = UserRole.Student, IsActive = true };
+        var studentUser = new User { Email = "s7@tecnm.mx", Role = UserRole.Student, IsActive = true };
         db.Users.Add(studentUser);
         await db.SaveChangesAsync();
 

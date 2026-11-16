@@ -131,13 +131,9 @@ public class AdvisorService : IAdvisorService
         }
         else
         {
-            var rawPassword = string.IsNullOrWhiteSpace(dto.Password) ? "Docente2026!" : dto.Password.Trim();
-            var passwordHash = BCrypt.Net.BCrypt.HashPassword(rawPassword);
-
             var newUser = new User
             {
                 Email = cleanEmail,
-                PasswordHash = passwordHash,
                 Role = UserRole.Advisor,
                 IsActive = true,
                 CreatedBy = _currentUser.UserId,
@@ -572,11 +568,9 @@ public class AdvisorService : IAdvisorService
             }
             else
             {
-                var defaultPasswordHash = BCrypt.Net.BCrypt.HashPassword("Docente2026!");
                 var newUser = new User
                 {
                     Email = cleanEmail,
-                    PasswordHash = defaultPasswordHash,
                     Role = UserRole.Advisor,
                     IsActive = true,
                     CreatedBy = _currentUser.UserId,

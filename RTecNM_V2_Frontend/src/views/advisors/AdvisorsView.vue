@@ -363,7 +363,6 @@ async function handleSubmit() {
     } else {
       await apiClient.post('/v1/advisors', {
         email: form.value.email.trim().toLowerCase(),
-        password: form.value.password?.trim() || undefined,
         firstName: form.value.firstName.trim(),
         lastName: form.value.lastName.trim(),
         fullName: computedFullName,
@@ -790,20 +789,7 @@ onMounted(() => {
                 :disabled="isSubmitting || isEditMode"
                 required
               />
-              <small class="tecnm-form-hint">Cuenta de acceso con la que el asesor iniciará sesión. Se le asignará el rol de asesor.</small>
-            </div>
-
-            <div v-if="!isEditMode" class="tecnm-form-group">
-              <label for="advisorPassword" class="tecnm-label">Contraseña Inicial</label>
-              <input
-                id="advisorPassword"
-                v-model="form.password"
-                type="password"
-                class="tecnm-form-control"
-                placeholder="Opcional (Por defecto: Docente2026!)"
-                :disabled="isSubmitting"
-              />
-              <small class="tecnm-form-hint">Opcional. Si se deja vacía, se asignará la contraseña institucional: Docente2026!</small>
+              <small class="tecnm-form-hint">Cuenta institucional Microsoft con la que el asesor iniciará sesión. Se le asignará el rol de asesor.</small>
             </div>
 
             <div class="tecnm-form-group">

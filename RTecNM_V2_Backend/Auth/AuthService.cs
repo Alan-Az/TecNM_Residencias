@@ -1,6 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
 using System.Security.Claims;
 using System.Text;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -13,33 +16,136 @@ public class AuthService : IAuthService
     private readonly IAuthRepository _authRepository;
     private readonly AppDbContext _context;
     private readonly JwtSettings _jwtSettings;
+    private readonly LoginControlSettings _loginControlSettings;
+    private readonly IHttpClientFactory? _httpClientFactory;
 
-    public AuthService(IAuthRepository authRepository, AppDbContext context, IOptions<JwtSettings> jwtSettings)
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true
+    };
+
+    private sealed class LoginControlExchangeResponse
+    {
+        public ExternalLoginUserDto? User { get; set; }
+    }
+
+    public AuthService(
+        IAuthRepository authRepository,
+        AppDbContext context,
+        IOptions<JwtSettings> jwtSettings,
+        IOptions<LoginControlSettings>? loginControlOptions = null,
+        IHttpClientFactory? httpClientFactory = null)
     {
         _authRepository = authRepository;
         _context = context;
         _jwtSettings = jwtSettings.Value;
+        _loginControlSettings = loginControlOptions?.Value ?? new LoginControlSettings();
+        _httpClientFactory = httpClientFactory;
     }
 
-    public async Task<Result<AuthTokenResponseDto>> LoginAsync(LoginRequestDto dto)
+    public Task<Result<AuthTokenResponseDto>> LoginAsync(LoginRequestDto dto)
     {
-        var user = await _authRepository.GetByEmailAsync(dto.Email);
+        return Task.FromResult(Result<AuthTokenResponseDto>.Failure(
+            "El acceso local por contraseña ha sido deshabilitado. Inicia sesión con tu cuenta institucional de Microsoft desde el Portal TecNM.",
+            403));
+    }
+
+    public async Task<Result<AuthTokenResponseDto>> ExchangeLoginControlCodeAsync(string code)
+    {
+        if (string.IsNullOrWhiteSpace(code))
+            return Result<AuthTokenResponseDto>.Failure("Código de autorización SSO inválido.", 400);
+
+        if (!Guid.TryParse(_loginControlSettings.ModuleId, out var moduleGuid) || string.IsNullOrWhiteSpace(_loginControlSettings.ApiKey))
+            return Result<AuthTokenResponseDto>.Failure("La configuración SSO de LoginControl (ModuleId/ApiKey) no está establecida en el servidor.", 500);
+
+        if (_httpClientFactory is null)
+            return Result<AuthTokenResponseDto>.Failure("Servicio HttpClient no disponible para intercambio SSO.", 500);
+
+        var exchangeUrl = $"{_loginControlSettings.InternalBaseUrl.TrimEnd('/')}/api/modules/exchange";
+        var client = _httpClientFactory.CreateClient();
+
+        using var request = new HttpRequestMessage(HttpMethod.Post, exchangeUrl);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _loginControlSettings.ApiKey);
+        request.Content = JsonContent.Create(new { moduleId = moduleGuid, code = code.Trim() });
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
+        {
+            return Result<AuthTokenResponseDto>.Failure(
+                "No fue posible validar el acceso con el Portal TecNM (LoginControl). Intenta ingresar nuevamente desde el portal.",
+                401);
+        }
+
+        var payload = JsonSerializer.Deserialize<LoginControlExchangeResponse>(body, JsonOptions);
+        if (payload?.User is null)
+            return Result<AuthTokenResponseDto>.Failure("Respuesta inválida del servidor LoginControl.", 502);
+
+        return await AuthenticateExternalUserAsync(payload.User);
+    }
+
+    public async Task<Result<AuthTokenResponseDto>> AuthenticateExternalUserAsync(ExternalLoginUserDto externalUser)
+    {
+        if (externalUser is null)
+            return Result<AuthTokenResponseDto>.Failure("Datos de usuario externo inválidos.", 400);
+
+        var microsoftEmail = externalUser.MicrosoftEmail?.Trim().ToLowerInvariant();
+        var lookupEmail = !string.IsNullOrWhiteSpace(microsoftEmail)
+            ? microsoftEmail
+            : externalUser.GoogleEmail?.Trim().ToLowerInvariant();
+
+        if (string.IsNullOrWhiteSpace(lookupEmail))
+            return Result<AuthTokenResponseDto>.Failure(
+                "ACCESO DENEGADO: Tu sesión en LoginControl no cuenta con un correo institucional Microsoft (@monclova.tecnm.mx) verificado.",
+                403);
+
+        var user = await _authRepository.GetByExternalUserIdAsync(externalUser.Id);
+        if (user is null)
+        {
+            user = await _authRepository.GetByEmailAsync(lookupEmail);
+        }
 
         if (user is null)
-            return Result<AuthTokenResponseDto>.Failure("Credenciales invalidas", 401);
+        {
+            return Result<AuthTokenResponseDto>.Failure(
+                $"ACCESO DENEGADO: El correo institucional ({lookupEmail}) no está dado de alta en el Sistema de Residencias Profesionales. Contacta a División de Estudios Profesionales.",
+                403);
+        }
 
         if (!user.IsActive)
             return Result<AuthTokenResponseDto>.Failure("Cuenta desactivada. Contacte a la administracion", 403);
 
-        if (!VerifyPassword(dto.Password, user.PasswordHash))
-            return Result<AuthTokenResponseDto>.Failure("Credenciales invalidas", 401);
+        // Vincular ExternalUserId y sincronizar datos de nombre desde LoginControl si vienen poblados
+        var needsUpdate = user.ExternalUserId != externalUser.Id;
+        user.ExternalUserId = externalUser.Id;
 
-        if (IsLegacyPasswordHash(user.PasswordHash))
+        if (!string.IsNullOrWhiteSpace(externalUser.FirstNames) && string.IsNullOrWhiteSpace(user.FirstName))
         {
-            var newHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
-            await _authRepository.UpdatePasswordHashAsync(user.Id, newHash);
+            user.FirstName = externalUser.FirstNames.Trim();
+            needsUpdate = true;
+        }
+        if (!string.IsNullOrWhiteSpace(externalUser.PaternalLastName) && string.IsNullOrWhiteSpace(user.LastName))
+        {
+            user.LastName = externalUser.PaternalLastName.Trim();
+            needsUpdate = true;
+        }
+        if (!string.IsNullOrWhiteSpace(externalUser.MaternalLastName) && string.IsNullOrWhiteSpace(user.LastName2))
+        {
+            user.LastName2 = externalUser.MaternalLastName.Trim();
+            needsUpdate = true;
         }
 
+        if (needsUpdate)
+        {
+            await _authRepository.UpdateUserAsync(user);
+        }
+
+        return await BuildAuthTokenResponseAsync(user);
+    }
+
+    private async Task<Result<AuthTokenResponseDto>> BuildAuthTokenResponseAsync(User user)
+    {
         if (user.Role == UserRole.Admin)
         {
             user.IsAdmin = true;
@@ -71,11 +177,24 @@ public class AuthService : IAuthService
                 controlNumber = student.ControlNumber;
                 careerId = student.CareerId;
 
-                // Check for active block
+                // Verificar bloqueos activos explícitos en student_blocks
                 if (student.Blocks != null && student.Blocks.Count > 0)
                 {
                     var blockReason = student.Blocks.First();
                     return Result<AuthTokenResponseDto>.Failure(blockReason, 403);
+                }
+
+                // Verificar requisitos obligatorios de residencia aunque no exista fila manual en student_blocks
+                if (!student.HasComplementaryActivities || !student.HasSocialService || !student.HasSpecialRequirements)
+                {
+                    var missing = new List<string>();
+                    if (!student.HasComplementaryActivities) missing.Add("Actividades Complementarias");
+                    if (!student.HasSocialService) missing.Add("Servicio Social");
+                    if (!student.HasSpecialRequirements) missing.Add("Requisitos Especiales (80% créditos / sin especiales)");
+
+                    return Result<AuthTokenResponseDto>.Failure(
+                        $"ACCESO DENEGADO: No cumples con los requisitos obligatorios para Residencias Profesionales (Falta: {string.Join(", ", missing)}).",
+                        403);
                 }
             }
         }
@@ -120,11 +239,6 @@ public class AuthService : IAuthService
             if (coordinatorCareerIds.Any())
             {
                 careerId = coordinatorCareerIds.First();
-            }
-            else if (user.CareerId.HasValue)
-            {
-                careerId = user.CareerId;
-                coordinatorCareerIds.Add(user.CareerId.Value);
             }
 
             var composed = $"{user.FirstName} {user.LastName}".Trim();
@@ -258,33 +372,6 @@ public class AuthService : IAuthService
         }
 
         return perms;
-    }
-
-    private bool VerifyPassword(string password, string hash)
-    {
-        if (IsLegacyPasswordHash(hash))
-            return VerifyLegacyPassword(password, hash);
-
-        return BCrypt.Net.BCrypt.Verify(password, hash);
-    }
-
-    private bool IsLegacyPasswordHash(string hash)
-    {
-        return hash.StartsWith("$legacy_sha256$");
-    }
-
-    private bool VerifyLegacyPassword(string password, string hash)
-    {
-        var parts = hash.Split('$');
-        if (parts.Length < 3) return false;
-
-        var storedHash = parts[2];
-        using var sha256 = System.Security.Cryptography.SHA256.Create();
-        var inputBytes = Encoding.UTF8.GetBytes(password);
-        var hashBytes = sha256.ComputeHash(inputBytes);
-        var computedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
-
-        return storedHash == computedHash;
     }
 
     private string GenerateJwtToken(User user, List<string> permissions, long? careerId = null, List<long>? careerIds = null, long? advisorId = null)

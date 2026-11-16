@@ -156,7 +156,6 @@ public class RoleRepository : IRoleRepository
             var term = search.Trim().ToLowerInvariant();
             q = q.Where(u => u.Email.ToLower().Contains(term)
                 || (u.Phone != null && u.Phone.Contains(term))
-                || (u.ControlNumber != null && u.ControlNumber.ToLower().Contains(term))
                 || ((u.FirstName + " " + (u.LastName ?? "") + " " + (u.LastName2 ?? "")).ToLower().Contains(term))
                 || _context.Students.Any(s => s.UserId == u.Id && (((s.FirstName + " " + s.LastName + " " + (s.LastName2 ?? "")).ToLower().Contains(term)) || s.ControlNumber.ToLower().Contains(term) || (s.Phone != null && s.Phone.Contains(term))))
                 || _context.Advisors.Any(a => a.UserId == u.Id && (a.FullName.ToLower().Contains(term) || (a.Phone != null && a.Phone.Contains(term))))
@@ -204,7 +203,6 @@ public class RoleRepository : IRoleRepository
             var term = search.Trim().ToLowerInvariant();
             q = q.Where(u => u.Email.ToLower().Contains(term)
                 || (u.Phone != null && u.Phone.Contains(term))
-                || (u.ControlNumber != null && u.ControlNumber.ToLower().Contains(term))
                 || ((u.FirstName + " " + (u.LastName ?? "") + " " + (u.LastName2 ?? "")).ToLower().Contains(term))
                 || _context.Students.Any(s => s.UserId == u.Id && (((s.FirstName + " " + s.LastName + " " + (s.LastName2 ?? "")).ToLower().Contains(term)) || s.ControlNumber.ToLower().Contains(term) || (s.Phone != null && s.Phone.Contains(term))))
                 || _context.Advisors.Any(a => a.UserId == u.Id && (a.FullName.ToLower().Contains(term) || (a.Phone != null && a.Phone.Contains(term))))

@@ -192,7 +192,7 @@ public class NotificationRepository : INotificationRepository
                 (u.LastName != null && u.LastName.ToLower().Contains(term)) ||
                 (u.LastName2 != null && u.LastName2.ToLower().Contains(term)) ||
                 u.Email.ToLower().Contains(term) ||
-                (u.ControlNumber != null && u.ControlNumber.ToLower().Contains(term)));
+                _context.Students.Any(s => s.UserId == u.Id && s.IsActive && s.ControlNumber.ToLower().Contains(term)));
         }
 
         if (!string.IsNullOrWhiteSpace(role))
@@ -214,7 +214,10 @@ public class NotificationRepository : INotificationRepository
                 FullName = $"{u.FirstName} {u.LastName} {u.LastName2}".Trim(),
                 Email = u.Email,
                 Role = u.Role.ToString(),
-                ControlNumber = u.ControlNumber,
+                ControlNumber = _context.Students
+                    .Where(s => s.UserId == u.Id && s.IsActive)
+                    .Select(s => s.ControlNumber)
+                    .FirstOrDefault(),
                 CareerName = null
             })
             .ToListAsync();

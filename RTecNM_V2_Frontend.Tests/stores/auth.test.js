@@ -108,4 +108,23 @@ describe('auth.js Store', () => {
     expect(auth.hasPermission('companies.view')).toBe(true)
     expect(auth.hasPermission('admin.reports')).toBe(false)
   })
+
+  it('hydrates token, user and sessionStorage via setSessionData (SSO login)', async () => {
+    const auth = useAuthStore()
+    await auth.setSessionData({
+      token: 'sso-jwt-token',
+      user: {
+        id: 42,
+        fullName: 'Docente Microsoft SSO',
+        role: 'advisor',
+        email: 'docente@monclova.tecnm.mx',
+        permissions: ['projects.advisor'],
+      },
+    })
+
+    expect(auth.isAuthenticated).toBe(true)
+    expect(auth.token).toBe('sso-jwt-token')
+    expect(auth.user?.email).toBe('docente@monclova.tecnm.mx')
+    expect(sessionStorage.getItem('authToken')).toBe('sso-jwt-token')
+  })
 })

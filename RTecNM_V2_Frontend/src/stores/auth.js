@@ -315,10 +315,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function login(email, password) {
-    const response = await apiClient.post('/v1/auth/login', { email, password })
-    const data = response.data
-
+  async function setSessionData(data) {
     token.value = data.token
     user.value = data.user
 
@@ -330,6 +327,21 @@ export const useAuthStore = defineStore('auth', () => {
     }
 
     return data
+  }
+
+  async function login(email, password) {
+    const response = await apiClient.post('/v1/auth/login', { email, password })
+    return await setSessionData(response.data)
+  }
+
+  async function exchangeSsoCode(code, state = null) {
+    const response = await apiClient.post('/v1/auth/sso/exchange', { code, state })
+    return await setSessionData(response.data)
+  }
+
+  async function getSsoConfig() {
+    const response = await apiClient.get('/v1/auth/sso/config')
+    return response.data
   }
 
   function logout() {
@@ -370,7 +382,10 @@ export const useAuthStore = defineStore('auth', () => {
     canGrade,
     canCreateProposal,
     fetchUserProfile,
+    setSessionData,
     login,
+    exchangeSsoCode,
+    getSsoConfig,
     logout,
   }
 })

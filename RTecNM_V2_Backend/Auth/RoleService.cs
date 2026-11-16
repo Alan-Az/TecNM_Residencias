@@ -312,8 +312,8 @@ public class RoleService : IRoleService
 
     public async Task<Result<UserRoleManagementDto>> CreateUserAsync(CreateUserManagementDto dto)
     {
-        if (string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
-            return Result<UserRoleManagementDto>.Failure("El correo y la contraseña son obligatorios", 400);
+        if (string.IsNullOrWhiteSpace(dto.Email))
+            return Result<UserRoleManagementDto>.Failure("El correo institucional es obligatorio", 400);
 
         dto.FirstName = StringSanitizer.SanitizeText(dto.FirstName);
         dto.LastName = StringSanitizer.SanitizeText(dto.LastName);
@@ -321,9 +321,6 @@ public class RoleService : IRoleService
         dto.ControlNumber = StringSanitizer.SanitizeControlNumber(dto.ControlNumber);
         dto.Curp = StringSanitizer.SanitizeCurp(dto.Curp);
         dto.Phone = StringSanitizer.SanitizeText(dto.Phone);
-
-        if (string.IsNullOrWhiteSpace(dto.FirstName) || string.IsNullOrWhiteSpace(dto.LastName) || string.IsNullOrWhiteSpace(dto.LastName2) || string.IsNullOrWhiteSpace(dto.ControlNumber) || string.IsNullOrWhiteSpace(dto.Phone))
-            return Result<UserRoleManagementDto>.Failure("Todos los campos (Nombre, Apellido Paterno, Apellido Materno, Matrícula y Teléfono) son obligatorios para registrar un nuevo usuario", 400);
 
         var emailVerification = await _emailVerificationService.ValidateAndVerifyEmailAsync(dto.Email);
         if (!emailVerification.IsSuccess)
@@ -345,8 +342,14 @@ public class RoleService : IRoleService
         var isSuperAdmin = selectedRole.Code.Equals("superadmin", StringComparison.OrdinalIgnoreCase) || selectedRole.Code.Equals("admin", StringComparison.OrdinalIgnoreCase);
         var baseUserRole = MapCodeToUserRole(selectedRole.Code);
 
-        if (baseUserRole == UserRole.Student && !string.IsNullOrWhiteSpace(dto.ControlNumber))
+        if (string.IsNullOrWhiteSpace(dto.FirstName) || string.IsNullOrWhiteSpace(dto.LastName) || string.IsNullOrWhiteSpace(dto.LastName2) || string.IsNullOrWhiteSpace(dto.Phone))
+            return Result<UserRoleManagementDto>.Failure("Los campos Nombre, Apellido Paterno, Apellido Materno y Teléfono son obligatorios para registrar un nuevo usuario", 400);
+
+        if (baseUserRole == UserRole.Student)
         {
+            if (string.IsNullOrWhiteSpace(dto.ControlNumber))
+                return Result<UserRoleManagementDto>.Failure("La matrícula (Número de Control) es obligatoria para estudiantes", 400);
+
             var controlNumUsed = await _roleRepository.IsControlNumberInUseAsync(dto.ControlNumber);
             if (controlNumUsed)
                 return Result<UserRoleManagementDto>.Failure("El número de control ya se encuentra registrado.", 400);
@@ -357,7 +360,6 @@ public class RoleService : IRoleService
             var user = new User
             {
                 Email = cleanEmail,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 Role = baseUserRole,
                 IsAdmin = isSuperAdmin,
                 IsActive = true,
@@ -367,8 +369,6 @@ public class RoleService : IRoleService
                 FirstName = dto.FirstName?.Trim(),
                 LastName = dto.LastName?.Trim(),
                 LastName2 = dto.LastName2?.Trim(),
-                ControlNumber = dto.ControlNumber?.Trim(),
-                CareerId = dto.CareerId,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow,
                 CreatedBy = _currentUser.UserId
@@ -520,11 +520,6 @@ public class RoleService : IRoleService
         user.FirstName = dto.FirstName?.Trim();
         user.LastName = dto.LastName?.Trim();
         user.LastName2 = dto.LastName2?.Trim();
-        if (!string.IsNullOrWhiteSpace(dto.ControlNumber)) user.ControlNumber = dto.ControlNumber.Trim();
-        if (dto.CareerId.HasValue && dto.CareerId.Value > 0) user.CareerId = dto.CareerId.Value;
-
-        if (!string.IsNullOrWhiteSpace(dto.NewPassword))
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.NewPassword);
 
         user.UpdatedAt = DateTime.UtcNow;
         user.UpdatedBy = _currentUser.UserId;
@@ -651,8 +646,6 @@ public class RoleService : IRoleService
         FirstName = u.FirstName,
         LastName = u.LastName,
         LastName2 = u.LastName2,
-        ControlNumber = u.ControlNumber,
-        CareerId = u.CareerId,
         FullName = !string.IsNullOrWhiteSpace(u.FirstName) ? $"{u.FirstName} {u.LastName} {u.LastName2}".Trim() : null,
         CreatedAt = u.CreatedAt,
         UpdatedAt = u.UpdatedAt,

@@ -188,7 +188,6 @@ public class NotificationBatchingAndMockTests
             LastName = "López",
             Email = "carlos.lopez@monclova.tecnm.mx",
             Role = UserRole.Student,
-            PasswordHash = "hash",
             IsActive = true
         };
         context.Users.Add(testUser);
@@ -284,8 +283,6 @@ public class NotificationBatchingAndMockTests
             LastName = "General",
             Email = "director@monclova.tecnm.mx",
             Role = UserRole.Director,
-            CareerId = null, // DIRECTORES NO TIENEN CARRERA
-            PasswordHash = "hash",
             IsActive = true
         };
         context.Users.Add(directorUser);
@@ -369,7 +366,6 @@ public class NotificationBatchingAndMockTests
                 LastName = "TecNM",
                 Email = $"alumno{i}@monclova.tecnm.mx",
                 Role = UserRole.Student,
-                PasswordHash = "hash",
                 IsActive = true
             };
             var s = new Student
@@ -469,7 +465,6 @@ public class NotificationBatchingAndMockTests
             LastName = "Regular",
             Email = "pedro.reg@monclova.tecnm.mx",
             Role = UserRole.Student,
-            PasswordHash = "hash",
             IsActive = true
         };
         var sRegular = new Student
@@ -492,7 +487,6 @@ public class NotificationBatchingAndMockTests
             LastName = "Innovatec",
             Email = "maria.innova@monclova.tecnm.mx",
             Role = UserRole.Student,
-            PasswordHash = "hash",
             IsActive = true
         };
         var sInnova = new Student

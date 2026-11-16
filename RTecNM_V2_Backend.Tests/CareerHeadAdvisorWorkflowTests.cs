@@ -33,7 +33,6 @@ public class CareerHeadAdvisorWorkflowTests
             FirstName = "Jefe",
             LastName = "Sistemas",
             Role = UserRole.CareerHead,
-            CareerId = 1,
             IsActive = true
         };
         db.Users.Add(user);
@@ -69,7 +68,6 @@ public class CareerHeadAdvisorWorkflowTests
             FirstName = "Jefa",
             LastName = "Industrial",
             Role = UserRole.CareerHead,
-            CareerId = 2,
             IsActive = true
         };
         db.Users.Add(user);
@@ -102,7 +100,6 @@ public class CareerHeadAdvisorWorkflowTests
         {
             Email = "jefe.electronica@tecnm.mx",
             Role = UserRole.CareerHead,
-            CareerId = 1,
             IsActive = true
         };
         db.Users.Add(chUser);
@@ -162,7 +159,6 @@ public class CareerHeadAdvisorWorkflowTests
         {
             Email = "jefe.quimica@tecnm.mx",
             Role = UserRole.CareerHead,
-            CareerId = 1,
             IsActive = true
         };
         db.Users.Add(chUser);

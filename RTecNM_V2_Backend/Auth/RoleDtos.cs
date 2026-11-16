@@ -114,7 +114,7 @@ public class ToggleAdminDto
 public class CreateUserManagementDto
 {
     public string Email { get; set; } = string.Empty;
-    public string Password { get; set; } = string.Empty;
+    public string? Password { get; set; }
     public long RoleId { get; set; }
 
     // Student fields

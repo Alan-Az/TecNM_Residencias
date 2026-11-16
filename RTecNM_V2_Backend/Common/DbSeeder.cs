@@ -277,7 +277,6 @@ public static class DbSeeder
             adminUser = new User
             {
                 Email = "admin@monclova.tecnm.mx",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword),
                 Role = UserRole.Admin,
                 IsAdmin = true,
                 IsActive = true,
@@ -291,23 +290,15 @@ public static class DbSeeder
             db.UserRoles.Add(new UserRoleAssignment { UserId = adminUser.Id, RoleId = adminRole.Id, IsActive = true });
             await db.SaveChangesAsync();
         }
-        else if (!BCrypt.Net.BCrypt.Verify(adminPassword, adminUser.PasswordHash))
-        {
-            adminUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(adminPassword);
-            adminUser.UpdatedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
 
         // Sembrado del Jefe de Carrera por Defecto (ISC)
         const string jefeEmail = "jefe.sistemas@monclova.tecnm.mx";
-        const string jefePassword = "JefeSistemas2026!";
         var jefeUser = await db.Users.FirstOrDefaultAsync(u => u.Email == jefeEmail);
         if (jefeUser is null)
         {
             jefeUser = new User
             {
                 Email = jefeEmail,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(jefePassword),
                 Role = UserRole.CareerHead,
                 IsAdmin = false,
                 IsActive = true,
@@ -338,16 +329,12 @@ public static class DbSeeder
         }
         else
         {
-            if (!BCrypt.Net.BCrypt.Verify(jefePassword, jefeUser.PasswordHash))
-            {
-                jefeUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword(jefePassword);
-                jefeUser.UpdatedAt = DateTime.UtcNow;
-            }
             if (jefeUser.Role != UserRole.CareerHead)
             {
                 jefeUser.Role = UserRole.CareerHead;
+                jefeUser.UpdatedAt = DateTime.UtcNow;
+                await db.SaveChangesAsync();
             }
-            await db.SaveChangesAsync();
 
             var existingProfile = await db.CareerHeads.FirstOrDefaultAsync(ch => ch.UserId == jefeUser.Id);
             if (existingProfile is null)
@@ -387,7 +374,6 @@ public static class DbSeeder
                 u = new User
                 {
                     Email = staff.Email,
-                    PasswordHash = BCrypt.Net.BCrypt.HashPassword("Tecnm2026!"),
                     Role = staff.Role,
                     IsAdmin = false,
                     IsActive = true,
@@ -772,12 +758,12 @@ public static class DbSeeder
                 CREATE INDEX IF NOT EXISTS idx_career_heads_user_id ON career_heads(user_id);
                 CREATE INDEX IF NOT EXISTS idx_career_heads_career_id ON career_heads(career_id);
 
+                ALTER TABLE users ADD COLUMN IF NOT EXISTS external_user_id UUID NULL;
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_users_external_user_id ON users(external_user_id) WHERE external_user_id IS NOT NULL;
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS first_name VARCHAR(100);
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name VARCHAR(100);
                 ALTER TABLE users ADD COLUMN IF NOT EXISTS last_name_2 VARCHAR(100);
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS control_number VARCHAR(20);
-                ALTER TABLE users ADD COLUMN IF NOT EXISTS career_id BIGINT;
                 ALTER TABLE students ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
                 ALTER TABLE student_blocks ADD COLUMN IF NOT EXISTS created_by BIGINT NULL;
                 ALTER TABLE student_blocks ADD COLUMN IF NOT EXISTS updated_by BIGINT NULL;
@@ -839,8 +825,16 @@ public static class DbSeeder
 
                 UPDATE users u SET phone = a.phone FROM advisors a WHERE a.user_id = u.id AND (u.phone IS NULL OR u.phone = '');
                 UPDATE users u SET phone = ch.phone FROM career_heads ch WHERE ch.user_id = u.id AND (u.phone IS NULL OR u.phone = '');
-                UPDATE users u SET first_name = s.first_name, last_name = s.last_name_1, last_name_2 = s.last_name_2, control_number = s.control_number, career_id = s.career_id FROM students s WHERE s.user_id = u.id AND u.first_name IS NULL;
+                UPDATE users u SET first_name = s.first_name, last_name = s.last_name_1, last_name_2 = s.last_name_2 FROM students s WHERE s.user_id = u.id AND u.first_name IS NULL;
                 UPDATE students s SET phone = u.phone FROM users u WHERE u.id = s.user_id AND u.phone IS NOT NULL AND (s.phone IS NULL OR s.phone = '');
+
+                -- Adaptación LoginControl SSO: migrar datos residuales y limpiar users
+                DROP VIEW IF EXISTS vw_search_users CASCADE;
+                DROP INDEX IF EXISTS idx_users_career_id;
+                ALTER TABLE users DROP CONSTRAINT IF EXISTS uq_users_control_number;
+                ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
+                ALTER TABLE users DROP COLUMN IF EXISTS control_number;
+                ALTER TABLE users DROP COLUMN IF EXISTS career_id;
             END $$;
         ";
         try
@@ -877,14 +871,18 @@ public static class DbSeeder
             SELECT 
                 u.id AS id,
                 u.id AS user_id,
-                COALESCE(u.control_number, '') AS control_number,
+                COALESCE((SELECT s.control_number FROM students s WHERE s.user_id = u.id AND s.is_active = true LIMIT 1), '') AS control_number,
                 TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''), COALESCE(' ' || u.last_name_2, ''))) AS full_name,
                 COALESCE(u.email, '') AS email,
                 u.role::text AS role,
-                COALESCE(c.name, '') AS career_name,
+                COALESCE(
+                    (SELECT c.name FROM students s JOIN careers c ON s.career_id = c.id WHERE s.user_id = u.id AND s.is_active = true LIMIT 1),
+                    (SELECT c.name FROM career_heads ch JOIN careers c ON ch.career_id = c.id WHERE ch.user_id = u.id AND ch.is_active = true LIMIT 1),
+                    (SELECT c.name FROM user_careers uc JOIN careers c ON uc.career_id = c.id WHERE uc.user_id = u.id LIMIT 1),
+                    ''
+                ) AS career_name,
                 u.is_active AS is_active
-            FROM users u
-            LEFT JOIN careers c ON u.career_id = c.id;",
+            FROM users u;",
 
             "DROP VIEW IF EXISTS vw_search_advisors CASCADE;",
             @"CREATE VIEW vw_search_advisors AS
@@ -966,7 +964,9 @@ public static class DbSeeder
             studentUser = new User
             {
                 Email = "juan.perez@monclova.tecnm.mx",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("20680123"),
+                FirstName = "Juan",
+                LastName = "Pérez",
+                LastName2 = "Gómez",
                 Role = UserRole.Student,
                 IsAdmin = false,
                 IsActive = true,
@@ -999,12 +999,6 @@ public static class DbSeeder
             db.Students.Add(studentProfile);
             await db.SaveChangesAsync();
         }
-        else if (!BCrypt.Net.BCrypt.Verify("20680123", studentUser.PasswordHash))
-        {
-            studentUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("20680123");
-            studentUser.UpdatedAt = DateTime.UtcNow;
-            await db.SaveChangesAsync();
-        }
 
         var advisorUser = await db.Users.FirstOrDefaultAsync(u => u.Email == "fernando.rivera@monclova.tecnm.mx");
         if (advisorUser is null)
@@ -1012,7 +1006,6 @@ public static class DbSeeder
             advisorUser = new User
             {
                 Email = "fernando.rivera@monclova.tecnm.mx",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("Advisor2026!"),
                 Role = UserRole.Advisor,
                 IsAdmin = false,
                 IsActive = true,
@@ -1039,11 +1032,6 @@ public static class DbSeeder
                 UpdatedAt = DateTime.UtcNow
             };
             db.Advisors.Add(advisorProfile);
-            await db.SaveChangesAsync();
-        }
-        else if (!BCrypt.Net.BCrypt.Verify("Advisor2026!", advisorUser.PasswordHash))
-        {
-            advisorUser.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
 
@@ -1074,7 +1062,6 @@ public static class DbSeeder
             jefeUser = new User
             {
                 Email = "jefe.sistemas@monclova.tecnm.mx",
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword("JefeSistemas2026!"),
                 Role = UserRole.CareerHead,
                 IsAdmin = false,
                 IsActive = true,
@@ -1103,12 +1090,6 @@ public static class DbSeeder
                 UpdatedAt = DateTime.UtcNow
             };
             db.CareerHeads.Add(careerHeadProfile);
-            await db.SaveChangesAsync();
-        }
-        else if (!BCrypt.Net.BCrypt.Verify("JefeSistemas2026!", jefeUser.PasswordHash))
-        {
-            jefeUser.PasswordHash = BCrypt.Net.BCrypt.HashPassword("JefeSistemas2026!");
-            jefeUser.UpdatedAt = DateTime.UtcNow;
             await db.SaveChangesAsync();
         }
 

@@ -20,14 +20,18 @@ CREATE OR REPLACE VIEW vw_search_users AS
 SELECT 
     u.id AS id,
     u.id AS user_id,
-    COALESCE(u.control_number, '') AS control_number,
+    COALESCE((SELECT s.control_number FROM students s WHERE s.user_id = u.id AND s.is_active = TRUE LIMIT 1), '') AS control_number,
     TRIM(CONCAT(COALESCE(u.first_name, ''), ' ', COALESCE(u.last_name, ''), COALESCE(' ' || u.last_name_2, ''))) AS full_name,
     COALESCE(u.email, '') AS email,
     u.role::text AS role,
-    COALESCE(c.name, '') AS career_name,
+    COALESCE(
+        (SELECT c.name FROM students s JOIN careers c ON s.career_id = c.id WHERE s.user_id = u.id AND s.is_active = TRUE LIMIT 1),
+        (SELECT c.name FROM career_heads ch JOIN careers c ON ch.career_id = c.id WHERE ch.user_id = u.id AND ch.is_active = TRUE LIMIT 1),
+        (SELECT c.name FROM user_careers uc JOIN careers c ON uc.career_id = c.id WHERE uc.user_id = u.id LIMIT 1),
+        ''
+    ) AS career_name,
     u.is_active AS is_active
-FROM users u
-LEFT JOIN careers c ON u.career_id = c.id;
+FROM users u;
 
 DROP VIEW IF EXISTS vw_search_advisors CASCADE;
 CREATE OR REPLACE VIEW vw_search_advisors AS

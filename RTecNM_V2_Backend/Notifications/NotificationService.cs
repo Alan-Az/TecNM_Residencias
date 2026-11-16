@@ -397,7 +397,9 @@ public class NotificationService : INotificationService
 
                 if (dto.CareerId.HasValue && dto.CareerId.Value > 0)
                 {
-                    advisorQuery = advisorQuery.Where(a => a.User!.CareerId == dto.CareerId.Value ||
+                    advisorQuery = advisorQuery.Where(a =>
+                        a.DepartmentId == dto.CareerId.Value ||
+                        context.AdvisorDepartments.Any(ad => ad.AdvisorId == a.Id && ad.DepartmentId == dto.CareerId.Value && ad.IsActive) ||
                         context.UserCareers.Any(uc => uc.UserId == a.UserId && uc.CareerId == dto.CareerId.Value));
                 }
 
@@ -419,7 +421,8 @@ public class NotificationService : INotificationService
 
                 if (dto.CareerId.HasValue && dto.CareerId.Value > 0)
                 {
-                    academicQuery = academicQuery.Where(u => u.CareerId == dto.CareerId.Value ||
+                    academicQuery = academicQuery.Where(u =>
+                        context.CareerHeads.Any(ch => ch.UserId == u.Id && ch.CareerId == dto.CareerId.Value && ch.IsActive) ||
                         context.UserCareers.Any(uc => uc.UserId == u.Id && uc.CareerId == dto.CareerId.Value));
                 }
 

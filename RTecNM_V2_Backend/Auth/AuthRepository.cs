@@ -39,6 +39,17 @@ public class AuthRepository : IAuthRepository
         await _context.SaveChangesAsync();
     }
 
+    public async Task UpdatePasswordHashAsync(long userId, string newHash)
+    {
+        var user = await _context.Users.FindAsync(userId);
+        if (user != null)
+        {
+            user.PasswordHash = newHash;
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+        }
+    }
+
     public async Task<Dictionary<long, string>> GetUserDisplayNamesByIdsAsync(List<long> userIds)
     {
         var ids = (userIds ?? new List<long>()).Where(id => id > 0).Distinct().ToList();

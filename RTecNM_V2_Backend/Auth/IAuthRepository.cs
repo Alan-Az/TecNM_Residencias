@@ -6,5 +6,6 @@ public interface IAuthRepository
     Task<User?> GetByExternalUserIdAsync(Guid externalUserId);
     Task<User> AddUserAsync(User user);
     Task UpdateUserAsync(User user);
+    Task UpdatePasswordHashAsync(long userId, string newHash);
     Task<Dictionary<long, string>> GetUserDisplayNamesByIdsAsync(List<long> userIds);
 }

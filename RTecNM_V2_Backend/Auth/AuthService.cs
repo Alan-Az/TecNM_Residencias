@@ -43,11 +43,29 @@ public class AuthService : IAuthService
         _httpClientFactory = httpClientFactory;
     }
 
-    public Task<Result<AuthTokenResponseDto>> LoginAsync(LoginRequestDto dto)
+    public async Task<Result<AuthTokenResponseDto>> LoginAsync(LoginRequestDto dto)
     {
-        return Task.FromResult(Result<AuthTokenResponseDto>.Failure(
-            "El acceso local por contraseña ha sido deshabilitado. Inicia sesión con tu cuenta institucional de Microsoft desde el Portal TecNM.",
-            403));
+        if (dto is null || string.IsNullOrWhiteSpace(dto.Email) || string.IsNullOrWhiteSpace(dto.Password))
+            return Result<AuthTokenResponseDto>.Failure("Credenciales invalidas", 401);
+
+        var user = await _authRepository.GetByEmailAsync(dto.Email);
+
+        if (user is null)
+            return Result<AuthTokenResponseDto>.Failure("Credenciales invalidas", 401);
+
+        if (!user.IsActive)
+            return Result<AuthTokenResponseDto>.Failure("Cuenta desactivada. Contacte a la administracion", 403);
+
+        if (!VerifyPassword(dto.Password, user.PasswordHash))
+            return Result<AuthTokenResponseDto>.Failure("Credenciales invalidas", 401);
+
+        if (IsLegacyPasswordHash(user.PasswordHash!))
+        {
+            var newHash = BCrypt.Net.BCrypt.HashPassword(dto.Password);
+            await _authRepository.UpdatePasswordHashAsync(user.Id, newHash);
+        }
+
+        return await BuildAuthTokenResponseAsync(user);
     }
 
     public async Task<Result<AuthTokenResponseDto>> ExchangeLoginControlCodeAsync(string code)
@@ -91,19 +109,24 @@ public class AuthService : IAuthService
             return Result<AuthTokenResponseDto>.Failure("Datos de usuario externo inválidos.", 400);
 
         var microsoftEmail = externalUser.MicrosoftEmail?.Trim().ToLowerInvariant();
+        var googleEmail = externalUser.GoogleEmail?.Trim().ToLowerInvariant();
         var lookupEmail = !string.IsNullOrWhiteSpace(microsoftEmail)
             ? microsoftEmail
-            : externalUser.GoogleEmail?.Trim().ToLowerInvariant();
+            : googleEmail;
 
         if (string.IsNullOrWhiteSpace(lookupEmail))
             return Result<AuthTokenResponseDto>.Failure(
-                "ACCESO DENEGADO: Tu sesión en LoginControl no cuenta con un correo institucional Microsoft (@monclova.tecnm.mx) verificado.",
+                "ACCESO DENEGADO: Tu sesión en LoginControl no cuenta con un correo institucional verificado.",
                 403);
 
         var user = await _authRepository.GetByExternalUserIdAsync(externalUser.Id);
-        if (user is null)
+        if (user is null && !string.IsNullOrWhiteSpace(microsoftEmail))
         {
-            user = await _authRepository.GetByEmailAsync(lookupEmail);
+            user = await _authRepository.GetByEmailAsync(microsoftEmail);
+        }
+        if (user is null && !string.IsNullOrWhiteSpace(googleEmail))
+        {
+            user = await _authRepository.GetByEmailAsync(googleEmail);
         }
 
         if (user is null)
@@ -442,5 +465,41 @@ public class AuthService : IAuthService
         );
 
         return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    private static bool VerifyPassword(string password, string? hash)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+            return false;
+
+        if (IsLegacyPasswordHash(hash))
+            return VerifyLegacyPassword(password, hash);
+
+        try
+        {
+            return BCrypt.Net.BCrypt.Verify(password, hash);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool IsLegacyPasswordHash(string hash)
+    {
+        return hash.StartsWith("$legacy_sha256$", StringComparison.Ordinal);
+    }
+
+    private static bool VerifyLegacyPassword(string password, string hash)
+    {
+        var parts = hash.Split('$');
+        if (parts.Length < 3) return false;
+
+        var storedHash = parts[2];
+        var inputBytes = Encoding.UTF8.GetBytes(password);
+        var hashBytes = System.Security.Cryptography.SHA256.HashData(inputBytes);
+        var computedHash = Convert.ToHexString(hashBytes).ToLowerInvariant();
+
+        return storedHash == computedHash;
     }
 }

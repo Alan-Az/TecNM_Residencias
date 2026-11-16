@@ -30,6 +30,10 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
         builder.HasIndex(u => u.Email)
             .IsUnique();
 
+        builder.Property(u => u.PasswordHash)
+            .HasColumnName("password_hash")
+            .HasMaxLength(255);
+
         var roleConverter = new Microsoft.EntityFrameworkCore.Storage.ValueConversion.ValueConverter<UserRole, string>(
             v => RoleToString(v),
             v => StringToRole(v)

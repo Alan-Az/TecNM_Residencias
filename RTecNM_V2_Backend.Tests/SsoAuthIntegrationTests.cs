@@ -194,4 +194,121 @@ public class SsoAuthIntegrationTests
         Assert.Equal(403, result.StatusCode);
         Assert.Contains("Actividades Complementarias", result.ErrorMessage);
     }
+
+    [Fact]
+    public async Task LoginAsync_ExistingUserWithPasswordAndEligibleStudent_ReturnsJwt()
+    {
+        using var db = CreateInMemoryDbContext();
+        var authRepo = new AuthRepository(db);
+        var authService = new AuthService(authRepo, db, CreateJwtOptions());
+
+        var user = new User
+        {
+            Email = "local.student@monclova.tecnm.mx",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Secret123!"),
+            Role = UserRole.Student,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        db.Students.Add(new Student
+        {
+            UserId = user.Id,
+            ControlNumber = "20680300",
+            FirstName = "María",
+            LastName = "Hernández",
+            CareerId = 1,
+            HasComplementaryActivities = true,
+            HasSocialService = true,
+            HasSpecialRequirements = true,
+            IsActive = true
+        });
+        await db.SaveChangesAsync();
+
+        var result = await authService.LoginAsync(new LoginRequestDto
+        {
+            Email = "local.student@monclova.tecnm.mx",
+            Password = "Secret123!"
+        });
+
+        Assert.True(result.IsSuccess);
+        Assert.NotNull(result.Data);
+        Assert.Equal("20680300", result.Data!.User.ControlNumber);
+    }
+
+    [Fact]
+    public async Task LoginAsync_BlockedStudentWithValidPassword_ReturnsForbidden()
+    {
+        using var db = CreateInMemoryDbContext();
+        var authRepo = new AuthRepository(db);
+        var authService = new AuthService(authRepo, db, CreateJwtOptions());
+
+        var user = new User
+        {
+            Email = "blocked.local@monclova.tecnm.mx",
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword("Secret123!"),
+            Role = UserRole.Student,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var student = new Student
+        {
+            UserId = user.Id,
+            ControlNumber = "20680301",
+            FirstName = "Pedro",
+            LastName = "Ruiz",
+            CareerId = 1,
+            HasComplementaryActivities = true,
+            HasSocialService = false,
+            HasSpecialRequirements = true,
+            IsActive = true
+        };
+        db.Students.Add(student);
+        await db.SaveChangesAsync();
+
+        var result = await authService.LoginAsync(new LoginRequestDto
+        {
+            Email = "blocked.local@monclova.tecnm.mx",
+            Password = "Secret123!"
+        });
+
+        Assert.False(result.IsSuccess);
+        Assert.Equal(403, result.StatusCode);
+        Assert.Contains("Servicio Social", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AuthenticateExternalUserAsync_MatchesGoogleEmailWhenMicrosoftEmailDiffers_ReturnsJwt()
+    {
+        using var db = CreateInMemoryDbContext();
+        var authRepo = new AuthRepository(db);
+        var authService = new AuthService(authRepo, db, CreateJwtOptions());
+
+        var user = new User
+        {
+            Email = "docente@itsmva.edu.mx",
+            Role = UserRole.Advisor,
+            IsActive = true
+        };
+        db.Users.Add(user);
+        await db.SaveChangesAsync();
+
+        var externalId = Guid.NewGuid();
+        var result = await authService.AuthenticateExternalUserAsync(new ExternalLoginUserDto(
+            Id: externalId,
+            FirstNames: "Docente",
+            PaternalLastName: "Prueba",
+            MaternalLastName: null,
+            GoogleEmail: "docente@itsmva.edu.mx",
+            MicrosoftEmail: "otro@monclova.tecnm.mx"
+        ));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("docente@itsmva.edu.mx", result.Data!.User.Email);
+        var reloaded = await db.Users.FirstAsync(u => u.Id == user.Id);
+        Assert.Equal(externalId, reloaded.ExternalUserId);
+    }
 }

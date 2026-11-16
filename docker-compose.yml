@@ -31,6 +31,8 @@ services:
     pull_policy: if_not_present
     container_name: residencia-v2-backend
     restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "5185:5185"
     environment:

@@ -4,7 +4,9 @@
 --   1. Agrega external_user_id (UUID) en users para vincular con LoginControl.
 --   2. Migra datos residuales de users.career_id a career_heads / user_careers.
 --   3. Reemplaza la vista vw_search_users sin depender de users.control_number ni users.career_id.
---   4. Elimina password_hash, control_number y career_id de la tabla users.
+--   4. Mantiene password_hash como NULLABLE para convivencia temporal (Fase 1)
+--      y elimina control_number / career_id duplicados de la tabla users.
+--      (Nota: password_hash se eliminará en Fase 2 al retirar el login anterior).
 -- Garantía: Completamente idempotente; preserva todos los perfiles y roles.
 -- ==============================================================================
 
@@ -79,10 +81,11 @@ SELECT
     u.is_active AS is_active
 FROM users u;
 
--- 4. Limpiar columnas de contraseña local y datos académicos duplicados en users
+-- 4. Preservar password_hash como nullable durante Fase 1 y limpiar datos académicos duplicados en users
 DROP INDEX IF EXISTS idx_users_career_id;
 ALTER TABLE users DROP CONSTRAINT IF EXISTS uq_users_control_number;
-ALTER TABLE users DROP COLUMN IF EXISTS password_hash;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255) NULL;
+ALTER TABLE users ALTER COLUMN password_hash DROP NOT NULL;
 ALTER TABLE users DROP COLUMN IF EXISTS control_number;
 ALTER TABLE users DROP COLUMN IF EXISTS career_id;
 

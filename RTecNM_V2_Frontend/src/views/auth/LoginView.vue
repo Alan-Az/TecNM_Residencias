@@ -7,6 +7,8 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
+const email = ref('')
+const password = ref('')
 const isLoading = ref(false)
 const errorMessage = ref('')
 const blockDetails = ref(null)
@@ -57,6 +59,31 @@ function handlePortalRedirect() {
   errorMessage.value = ''
   blockDetails.value = null
   window.location.href = ssoConfig.value.loginPortalUrl || 'http://localhost:5173/login'
+}
+
+async function handleLogin() {
+  if (!email.value.trim() || !password.value) {
+    errorMessage.value = 'Por favor ingrese correo y contraseña'
+    return
+  }
+
+  isLoading.value = true
+  errorMessage.value = ''
+  blockDetails.value = null
+
+  try {
+    await authStore.login(email.value.trim(), password.value)
+    const redirectPath = typeof route.query.redirect === 'string' ? route.query.redirect : '/dashboard'
+    router.replace(redirectPath)
+  } catch (error) {
+    const msg = error.response?.data?.message || 'Error al iniciar sesión'
+    if (error.response?.status === 403) {
+      blockDetails.value = parseBlockReason(msg)
+    }
+    errorMessage.value = msg
+  } finally {
+    isLoading.value = false
+  }
 }
 
 onMounted(async () => {
@@ -151,7 +178,7 @@ onMounted(async () => {
       </div>
 
       <h1 class="login-title">Sistema de Residencias Profesionales TecNM</h1>
-      <p class="login-subtitle">Acceso Institucional con Cuenta Microsoft (@monclova.tecnm.mx)</p>
+      <p class="login-subtitle">Inicio de Sesión</p>
 
       <div
         v-if="errorMessage"
@@ -185,18 +212,63 @@ onMounted(async () => {
       </div>
 
       <div v-else class="login-form">
-        <p class="text-sm text-gray-600 text-center mb-4">
-          Para ingresar a Residencias Profesionales, inicia sesión a través del Portal Central de Control de Acceso con tu correo <strong>@monclova.tecnm.mx</strong>.
-        </p>
-
         <button
           id="loginSsoBtn"
           type="button"
           class="tecnm-btn tecnm-btn-primary login-btn"
           @click="handlePortalRedirect"
         >
-          Iniciar Sesión con Microsoft (@monclova.tecnm.mx)
+          Iniciar Sesión con Portal TecNM (Microsoft)
         </button>
+
+        <div class="my-4 flex items-center gap-3 text-xs text-gray-400">
+          <div class="h-px flex-1 bg-gray-200"></div>
+          <span>o ingresa con tu cuenta local</span>
+          <div class="h-px flex-1 bg-gray-200"></div>
+        </div>
+
+        <form id="loginForm" class="login-form" @submit.prevent="handleLogin">
+          <div class="tecnm-form-group">
+            <label for="email" class="tecnm-label">Correo institucional</label>
+            <input
+              id="email"
+              v-model="email"
+              type="email"
+              name="email"
+              class="tecnm-form-control"
+              placeholder="ejemplo@monclova.tecnm.mx"
+              autocomplete="email"
+              :disabled="isLoading"
+              required
+              @input="errorMessage = ''"
+            />
+          </div>
+
+          <div class="tecnm-form-group">
+            <label for="password" class="tecnm-label">Contraseña</label>
+            <input
+              id="password"
+              v-model="password"
+              type="password"
+              name="password"
+              class="tecnm-form-control"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              :disabled="isLoading"
+              required
+              @input="errorMessage = ''"
+            />
+          </div>
+
+          <button
+            id="loginBtn"
+            type="submit"
+            class="tecnm-btn tecnm-btn-secondary login-btn"
+            :disabled="isLoading"
+          >
+            <span id="loginBtnText">Iniciar Sesión</span>
+          </button>
+        </form>
       </div>
     </div>
   </div>

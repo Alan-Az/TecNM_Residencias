@@ -22,8 +22,11 @@
 
   /* ---- Neutral Background & Surface Palette (Spec 08 §2) ---- */
   --tecnm-bg-main: #F4F6F9;           /* App background tint */
+  --tecnm-bg-light: #F8FAFC;          /* Subtle surface tint */
   --tecnm-surface-white: #FFFFFF;     /* Cards, Modals, Form Containers */
   --tecnm-border-color: #E2E8F0;      /* Standard card and table borders */
+  --tecnm-border-light: #F1F5F9;      /* Subtle internal dividers */
+  --tecnm-border-medium: #CBD5E1;     /* Input and control borders */
   --tecnm-border-focus: #1B396A;      /* Input focus indicator */
   --tecnm-white: #FFFFFF;             /* Pure white (spinner accents) */
   --tecnm-gray-100: #F1F5F9;          /* Subtle neutral fill (neutral badges, empty cells) */
@@ -91,10 +94,10 @@
   --tecnm-radius-xl: 0.75rem;
   --tecnm-radius-full: 9999px;
 
-  /* ---- Shadows (Spec 08 §4.4) ---- */
-  --tecnm-shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --tecnm-shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-  --tecnm-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  /* ---- Shadows (Spec 08 §4.4 - Tintadas con azul institucional) ---- */
+  --tecnm-shadow-sm: 0 1px 3px rgba(15, 37, 72, 0.05), 0 1px 2px rgba(15, 37, 72, 0.03);
+  --tecnm-shadow-md: 0 10px 15px -3px rgba(15, 37, 72, 0.08), 0 4px 6px -2px rgba(15, 37, 72, 0.04);
+  --tecnm-shadow-lg: 0 20px 25px -5px rgba(15, 37, 72, 0.12), 0 8px 10px -6px rgba(15, 37, 72, 0.06);
 
   /* ---- Transitions ---- */
   --tecnm-transition-fast: 150ms ease;

@@ -34,6 +34,11 @@ button, input, select, textarea {
   font-family: inherit;
 }
 
+:focus-visible {
+  outline: 3px solid var(--tecnm-border-focus);
+  outline-offset: 2px;
+}
+
 /* ============================================================
    2. TIPOGRAFÍA (Spec 08 §3)
    ============================================================ */
@@ -42,8 +47,8 @@ h1, h2, h3, h4, h5, h6 {
   margin-bottom: var(--tecnm-spacing-md);
 }
 
-h1 { font-size: var(--tecnm-font-size-4xl); font-weight: var(--tecnm-font-weight-bold); color: var(--tecnm-blue-primary); line-height: 1.2; }
-h2 { font-size: 1.75rem; font-weight: var(--tecnm-font-weight-semibold); color: var(--tecnm-blue-primary); line-height: 1.3; }
+h1 { font-size: var(--tecnm-font-size-4xl); font-weight: var(--tecnm-font-weight-bold); color: var(--tecnm-blue-primary); line-height: 1.2; letter-spacing: -0.025em; }
+h2 { font-size: 1.75rem; font-weight: var(--tecnm-font-weight-semibold); color: var(--tecnm-blue-primary); line-height: 1.3; letter-spacing: -0.015em; }
 h3 { font-size: var(--tecnm-font-size-xl); font-weight: var(--tecnm-font-weight-semibold); line-height: 1.4; }
 h4 { font-size: 1.1rem; font-weight: var(--tecnm-font-weight-medium); }
 
@@ -190,7 +195,7 @@ a:hover {
   z-index: 100;
   background-color: var(--tecnm-blue-primary);
   padding: 0;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 2px 8px rgba(15, 37, 72, 0.14);
 }
 
 .tecnm-navbar-inner {
@@ -410,14 +415,15 @@ a:hover {
   align-items: center;
   justify-content: center;
   gap: var(--tecnm-spacing-sm);
+  min-height: 2.5rem;
   padding: 0.625rem 1.25rem;
   font-family: var(--tecnm-font-family);
   font-size: var(--tecnm-font-size-sm);
   font-weight: var(--tecnm-font-weight-semibold);
-  border: none;
+  border: 1px solid transparent;
   border-radius: var(--tecnm-radius-md);
   cursor: pointer;
-  transition: all var(--tecnm-transition-fast);
+  transition: background-color var(--tecnm-transition-fast), border-color var(--tecnm-transition-fast), box-shadow var(--tecnm-transition-fast), transform var(--tecnm-transition-fast);
   text-decoration: none;
 }
 
@@ -442,12 +448,14 @@ a:hover {
 }
 
 .tecnm-btn-secondary {
-  background-color: var(--tecnm-border-color);
+  background-color: var(--tecnm-gray-100);
+  border-color: var(--tecnm-border-color);
   color: var(--tecnm-text-primary);
 }
 
 .tecnm-btn-secondary:hover {
-  background-color: var(--tecnm-gray-200);
+  background-color: var(--tecnm-border-color);
+  border-color: var(--tecnm-border-medium);
 }
 
 .tecnm-btn-outline {
@@ -514,8 +522,8 @@ a:hover {
   background-color: var(--tecnm-surface-white);
   border: 1px solid var(--tecnm-border-color);
   border-top: 4px solid var(--tecnm-gold-accent);   /* acento dorado */
-  border-radius: var(--tecnm-radius-lg);
-  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.05);
+  border-radius: var(--tecnm-radius-xl);
+  box-shadow: var(--tecnm-shadow-sm);
   padding: var(--tecnm-spacing-lg);
 }
 
@@ -800,9 +808,10 @@ textarea.tecnm-form-control,
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   max-height: clamp(260px, calc(100vh - 310px), 68vh);
-  border: 1px solid var(--tecnm-border-color, #cbd5e1);
-  border-radius: var(--tecnm-border-radius-md, 8px);
-  background: #ffffff;
+  border: 1px solid var(--tecnm-border-color);
+  border-radius: var(--tecnm-radius-lg);
+  box-shadow: var(--tecnm-shadow-sm);
+  background: var(--tecnm-surface-white);
   position: relative;
 }
 
@@ -2381,17 +2390,17 @@ textarea.tecnm-form-control,
   align-items: center;
   justify-content: center;
   padding: var(--tecnm-spacing-xl) var(--tecnm-spacing-md);
-  background-color: var(--tecnm-bg-main);
+  background: linear-gradient(180deg, var(--tecnm-blue-tint-hero) 0%, var(--tecnm-bg-main) 45%);
 }
 
 .login-card {
   width: 100%;
-  max-width: 420px;
+  max-width: 440px;
   background-color: var(--tecnm-surface-white);
   border: 1px solid var(--tecnm-border-color);
   border-top: 4px solid var(--tecnm-gold-accent);
-  border-radius: var(--tecnm-radius-lg);
-  box-shadow: var(--tecnm-shadow-md);
+  border-radius: var(--tecnm-radius-xl);
+  box-shadow: var(--tecnm-shadow-lg);
   padding: var(--tecnm-spacing-xl);
 }
 
@@ -2400,6 +2409,7 @@ textarea.tecnm-form-control,
   font-weight: var(--tecnm-font-weight-bold);
   color: var(--tecnm-blue-primary);
   text-align: center;
+  letter-spacing: -0.02em;
   margin-bottom: var(--tecnm-spacing-xs);
 }
 
@@ -2407,19 +2417,43 @@ textarea.tecnm-form-control,
   font-size: var(--tecnm-font-size-sm);
   color: var(--tecnm-text-secondary);
   text-align: center;
-  margin-bottom: var(--tecnm-spacing-xl);
+  margin-bottom: var(--tecnm-spacing-lg);
 }
 
 .login-icon {
   display: flex;
   justify-content: center;
-  margin-bottom: var(--tecnm-spacing-md);
+  align-items: center;
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--tecnm-spacing-md);
+  border-radius: var(--tecnm-radius-xl);
+  background-color: var(--tecnm-blue-tint-50);
+  border: 1px solid var(--tecnm-border-color);
 }
 
-.login-icon svg {
-  width: 48px;
-  height: 48px;
+.login-icon svg,
+.login-icon img {
+  width: 38px;
+  height: 38px;
   color: var(--tecnm-blue-primary);
+}
+
+.login-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.25rem 0;
+  font-size: var(--tecnm-font-size-xs);
+  color: var(--tecnm-text-muted);
+}
+
+.login-divider::before,
+.login-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background-color: var(--tecnm-border-color);
 }
 
 .login-form .tecnm-form-group {
@@ -2456,7 +2490,7 @@ textarea.tecnm-form-control,
 .block-details {
   margin-top: var(--tecnm-spacing-md);
   padding: var(--tecnm-spacing-md);
-  background-color: var(--tecnm-bg-warning-light);
+  background-color: var(--tecnm-warning-bg);
   border: 1px solid var(--tecnm-gold-accent);
   border-radius: var(--tecnm-radius-md);
 }
@@ -2483,7 +2517,7 @@ textarea.tecnm-form-control,
 }
 
 .requirement-icon {
-  color: var(--tecnm-red-danger);
+  color: var(--tecnm-danger-strong);
   font-weight: bold;
 }
 

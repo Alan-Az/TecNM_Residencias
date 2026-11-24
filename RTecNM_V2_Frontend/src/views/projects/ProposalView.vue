@@ -1546,8 +1546,8 @@ onMounted(() => {
                       Descargar / Ver Carta &rarr;
                     </button>
                     <router-link
-                      v-if="isRejectedStatus(selectedProject.status) || cartaAceptacionDoc.status === 'rejected'"
-                      :to="{ path: '/documents', query: { projectId: selectedProject.id } }"
+                      v-if="isRejectedStatus(selectedProject.status) || (cartaAceptacionDoc && cartaAceptacionDoc.status !== 'approved')"
+                      :to="{ path: '/documents', query: { projectId: selectedProject.id, documentType: 'carta_aceptacion', action: 'upload' } }"
                       class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
                       title="Subir corrección de Carta de Aceptación"
                     >

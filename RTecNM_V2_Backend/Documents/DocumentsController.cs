@@ -109,13 +109,17 @@ public class DocumentsController : ControllerBase
             var result = await _documentService.UploadDocumentAsync(dto, UploadsRootPath);
             return CreatedAtAction(nameof(GetByProject), new { projectId = result.ProjectId }, result);
         }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new { message = ex.Message });
+        }
         catch (ArgumentException ex)
         {
             return BadRequest(new { message = ex.Message });
         }
         catch (InvalidOperationException ex)
         {
-            return NotFound(new { message = ex.Message });
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -165,7 +169,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var document = await _documentRepository.GetByIdAsync(id);
-            if (document is null || !document.IsActive)
+            if (document is null)
                 return NotFound(new { message = $"Documento con ID {id} no encontrado." });
 
             var denied = await EnsureProjectAccessAsync(document.ProjectId);
@@ -193,7 +197,7 @@ public class DocumentsController : ControllerBase
         try
         {
             var document = await _documentRepository.GetByIdAsync(id);
-            if (document is null || !document.IsActive)
+            if (document is null)
                 return NotFound(new { message = $"Documento con ID {id} no encontrado." });
 
             var denied = await EnsureProjectAccessAsync(document.ProjectId);

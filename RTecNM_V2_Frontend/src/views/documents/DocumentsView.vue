@@ -611,6 +611,12 @@ async function initPage() {
   if (isStudent.value) {
     viewMode.value = 'detail'
     await resolveStudentProject()
+    if (route.query.action === 'upload' || route.query.documentType) {
+      await openUploadModal()
+      if (route.query.documentType) {
+        uploadForm.value.documentType = String(route.query.documentType)
+      }
+    }
   } else {
     await Promise.all([loadCareers(), loadAdvisors()])
     const qPid = route.query.projectId
@@ -827,7 +833,13 @@ async function openUploadModal() {
   }
 
   let defaultDocType = (!hasCartaAceptacion.value && !isAccreditationProject.value) ? 'carta_aceptacion' : ''
-  if (isStudent.value && studentDeadlineInfo.value.isDocumentBlocked) {
+  if (!isAccreditationProject.value && (cartaAceptacionDoc.value?.status !== 'approved' || isProjectRejected.value)) {
+    defaultDocType = 'carta_aceptacion'
+  }
+  if (route.query.documentType) {
+    defaultDocType = String(route.query.documentType)
+  }
+  if (isStudent.value && studentDeadlineInfo.value.isDocumentBlocked && defaultDocType !== 'carta_aceptacion') {
     if (studentDeadlineInfo.value.formato29Status !== 'approved') {
       defaultDocType = 'formato_29'
     } else if (studentDeadlineInfo.value.formato29V2Status !== 'approved' && studentDeadlineInfo.value.formato30Status === 'approved') {
@@ -854,6 +866,13 @@ async function openUploadModal() {
 function closeUploadModal() {
   isUploadModalOpen.value = false
   clearLocalPreview()
+}
+
+async function openResubmitModal(doc) {
+  await openUploadModal()
+  if (doc?.documentType) {
+    uploadForm.value.documentType = doc.documentType
+  }
 }
 
 function onFileSelected(e) {
@@ -947,8 +966,9 @@ async function handleUploadSubmit() {
       }
     }
 
-    // Regla: Restricción de subida si fecha límite ha vencido
-    if (studentDeadlineInfo.value.isDocumentBlocked) {
+    // Regla: Restricción de subida si fecha límite ha vencido (no bloquea formatos de aprobación previa como carta de aceptación)
+    const isPreApprovalFormat = ['carta_aceptacion', 'carta_aprobacion', 'constancia_acreditacion'].includes(tipoSeleccionado)
+    if (studentDeadlineInfo.value.isDocumentBlocked && !isPreApprovalFormat) {
       if (studentDeadlineInfo.value.formato29Status !== 'approved' && tipoSeleccionado !== 'formato_29') {
         showAlert('La fecha límite del Formato 29 ha vencido. Únicamente tiene permitido cargar el Formato 29 pendiente.', 'warning')
         return
@@ -1807,9 +1827,24 @@ onMounted(() => {
                 <td>{{ formatTecNMDate(doc.uploadedAt || doc.createdAt) }}</td>
                 <td>
                   <TecnmBadge :status="doc.status" />
+                  <div
+                    v-if="doc.rejectionReason"
+                    style="margin-top: 0.35rem; font-size: 0.8rem; color: #b91c1c; background: #fef2f2; padding: 0.25rem 0.5rem; border-radius: 4px; border-left: 3px solid #dc2626;"
+                  >
+                    <strong>Observaciones:</strong> {{ doc.rejectionReason }}
+                  </div>
                 </td>
                 <td>
                   <div class="tecnm-row-actions">
+                    <button
+                      v-if="isStudent && (doc.status === 'rejected' || (isProjectRejected && ['carta_aceptacion', 'carta_aprobacion'].includes((doc.documentType || '').toLowerCase())))"
+                      type="button"
+                      class="tecnm-btn tecnm-btn-warning tecnm-btn-sm"
+                      title="Subir corrección de este documento"
+                      @click="openResubmitModal(doc)"
+                    >
+                      ↻ Re-subir
+                    </button>
                     <button
                       type="button"
                       class="tecnm-btn tecnm-btn-secondary tecnm-btn-sm"
@@ -1939,7 +1974,7 @@ onMounted(() => {
                 Diploma / Constancia de Acreditación (InnovaTecNM / HackaTec)
               </option>
               <option
-                v-if="!isAccreditationProject && (!hasCartaAceptacion || cartaAceptacionDoc?.status === 'rejected' || isStaff)"
+                v-if="!isAccreditationProject"
                 value="carta_aceptacion"
               >
                 Carta de Aceptación / Aprobación *

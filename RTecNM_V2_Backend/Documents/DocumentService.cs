@@ -73,7 +73,7 @@ public class DocumentService : IDocumentService
         var project = await _projectRepository.GetByIdAsync(dto.ProjectId);
         if (project == null)
         {
-            throw new InvalidOperationException($"No existe el proyecto con ID {dto.ProjectId}.");
+            throw new KeyNotFoundException($"No existe el proyecto con ID {dto.ProjectId}.");
         }
 
         var documentsFolder = Path.Combine(uploadsRootPath, "documents");
@@ -195,7 +195,7 @@ public class DocumentService : IDocumentService
     public async Task<(byte[] FileBytes, string ContentType, string FileName)> DownloadDocumentAsync(long id, string uploadsRootPath)
     {
         var document = await _repository.GetByIdAsync(id);
-        if (document == null || !document.IsActive)
+        if (document == null)
         {
             throw new KeyNotFoundException($"Documento con ID {id} no encontrado.");
         }
@@ -458,8 +458,8 @@ private static DocumentResponseDto MapToDto(Document doc)
                 }
             }
 
-            // Regla: Si la fecha límite del Formato 29 venció y no está aprobado, solo se permite subir el Formato 29
-            if (student.Formato29Deadline.HasValue && DateTime.UtcNow > student.Formato29Deadline.Value)
+            // Regla: Si la fecha límite del Formato 29 venció y no está aprobado, solo se permite subir el Formato 29 (salvo formatos previos o carta de aceptación)
+            if (!isPreApprovalType && student.Formato29Deadline.HasValue && DateTime.UtcNow > student.Formato29Deadline.Value)
             {
                 if (!isF29Approved && docTypeLower != DocumentType.Formato29)
                 {
@@ -467,8 +467,8 @@ private static DocumentResponseDto MapToDto(Document doc)
                 }
             }
 
-            // Regla: Si la fecha límite del Formato 30 venció y faltan los formatos finales, solo se permite subir 29v2 o 30
-            if (student.Formato30Deadline.HasValue && DateTime.UtcNow > student.Formato30Deadline.Value)
+            // Regla: Si la fecha límite del Formato 30 venció y faltan los formatos finales, solo se permite subir 29v2 o 30 (salvo formatos previos o carta de aceptación)
+            if (!isPreApprovalType && student.Formato30Deadline.HasValue && DateTime.UtcNow > student.Formato30Deadline.Value)
             {
                 var f29v2 = existingDocs.FirstOrDefault(d => d.DocumentType.Equals(DocumentType.Formato29V2, StringComparison.OrdinalIgnoreCase));
                 var f30 = existingDocs.FirstOrDefault(d => d.DocumentType.Equals(DocumentType.Formato30, StringComparison.OrdinalIgnoreCase));

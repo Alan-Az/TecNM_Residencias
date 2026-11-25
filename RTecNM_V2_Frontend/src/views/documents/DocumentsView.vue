@@ -100,6 +100,48 @@ function isDeadlinePassed(deadline) {
   return now > deadlineDate
 }
 
+// Helper para obtener el estado de la fecha límite
+function getDeadlineStatus(deadline) {
+  if (!deadline) return 'Sin fecha límite'
+  if (isDeadlinePassed(deadline)) {
+    return 'Vencida'
+  }
+  const daysLeft = Math.ceil((new Date(deadline) - new Date()) / (1000 * 60 * 60 * 24))
+  if (daysLeft <= 3) {
+    return `Vence en ${daysLeft} día(s)`
+  }
+  return `Vence en ${daysLeft} días`
+}
+
+// Modo de visualización: 'matrix' (tabla general para staff) o 'detail' (expediente de un proyecto)
+const viewMode = ref('matrix')
+const matrixItems = ref([])
+const matrixLoading = ref(false)
+const matrixPage = ref(1)
+const matrixPageSize = ref(10)
+const matrixTotalCount = ref(0)
+const matrixTotalPages = ref(0)
+const matrixSearch = ref('')
+const careersList = ref([])
+const matrixCareerFilter = ref(
+  authStore.isCareerHead && authStore.userCareerId
+    ? String(authStore.userCareerId)
+    : authStore.isCoordinator && authStore.userCareerIds.length > 0
+    ? String(authStore.userCareerIds[0])
+    : ''
+)
+const matrixCompletionFilter = ref('')
+const matrixAdvisorFilter = ref('')
+const advisorOptions = ref([])
+const isExportingMatrix = ref(false)
+
+const currentProject = ref(null)
+const documents = ref([])
+const isLoading = ref(false)
+const errorMessage = ref('')
+const alertMessage = ref('')
+const alertType = ref('info')
+
 // Comprobación de documentos faltantes para Asesores (y Jefes de Carrera como asesores de sus propios asesorados)
 const canViewAdvisorMissingChecklist = computed(() => {
   if (isStudent.value) return false
@@ -144,48 +186,6 @@ watch(() => currentProject.value?.id, (newId) => {
     missingChecklist.value = null
   }
 })
-
-// Helper para obtener el estado de la fecha límite
-function getDeadlineStatus(deadline) {
-  if (!deadline) return 'Sin fecha límite'
-  if (isDeadlinePassed(deadline)) {
-    return 'Vencida'
-  }
-  const daysLeft = Math.ceil((new Date(deadline) - new Date()) / (1000 * 60 * 60 * 24))
-  if (daysLeft <= 3) {
-    return `Vence en ${daysLeft} día(s)`
-  }
-  return `Vence en ${daysLeft} días`
-}
-
-// Modo de visualización: 'matrix' (tabla general para staff) o 'detail' (expediente de un proyecto)
-const viewMode = ref('matrix')
-const matrixItems = ref([])
-const matrixLoading = ref(false)
-const matrixPage = ref(1)
-const matrixPageSize = ref(10)
-const matrixTotalCount = ref(0)
-const matrixTotalPages = ref(0)
-const matrixSearch = ref('')
-const careersList = ref([])
-const matrixCareerFilter = ref(
-  authStore.isCareerHead && authStore.userCareerId
-    ? String(authStore.userCareerId)
-    : authStore.isCoordinator && authStore.userCareerIds.length > 0
-    ? String(authStore.userCareerIds[0])
-    : ''
-)
-const matrixCompletionFilter = ref('')
-const matrixAdvisorFilter = ref('')
-const advisorOptions = ref([])
-const isExportingMatrix = ref(false)
-
-const currentProject = ref(null)
-const documents = ref([])
-const isLoading = ref(false)
-const errorMessage = ref('')
-const alertMessage = ref('')
-const alertType = ref('info')
 
 // Gestión y Carga de Asesor Académico en Expediente
 const cartaAceptacionDoc = computed(() => {

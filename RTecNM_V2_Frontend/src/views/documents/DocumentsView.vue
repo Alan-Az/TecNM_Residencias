@@ -100,6 +100,51 @@ function isDeadlinePassed(deadline) {
   return now > deadlineDate
 }
 
+// Comprobación de documentos faltantes para Asesores (y Jefes de Carrera como asesores de sus propios asesorados)
+const canViewAdvisorMissingChecklist = computed(() => {
+  if (isStudent.value) return false
+  if (!currentProject.value?.id) return false
+  return (
+    authStore.isAdmin ||
+    authStore.isAdvisor ||
+    authStore.isCareerHead ||
+    authStore.hasRole('advisor', 'asesor', 'jefecarrera', 'careerhead', 'admin')
+  )
+})
+
+const missingChecklist = ref(null)
+const isLoadingMissingChecklist = ref(false)
+const missingChecklistError = ref('')
+
+async function loadMissingChecklist() {
+  if (!canViewAdvisorMissingChecklist.value || !currentProject.value?.id) {
+    missingChecklist.value = null
+    return
+  }
+  isLoadingMissingChecklist.value = true
+  missingChecklistError.value = ''
+  try {
+    const res = await apiClient.get(`/v1/documents/project/${currentProject.value.id}/missing-checklist`)
+    missingChecklist.value = res.data
+  } catch (err) {
+    if (err.response?.status === 403) {
+      missingChecklist.value = null
+    } else {
+      missingChecklistError.value = 'No se pudo cargar el estado de documentos pendientes.'
+    }
+  } finally {
+    isLoadingMissingChecklist.value = false
+  }
+}
+
+watch(() => currentProject.value?.id, (newId) => {
+  if (newId) {
+    loadMissingChecklist()
+  } else {
+    missingChecklist.value = null
+  }
+})
+
 // Helper para obtener el estado de la fecha límite
 function getDeadlineStatus(deadline) {
   if (!deadline) return 'Sin fecha límite'
@@ -599,6 +644,7 @@ async function openProjectDetail(item) {
     showAlert('No se pudo cargar el expediente del proyecto.', 'danger')
   } finally {
     isLoading.value = false
+    loadMissingChecklist()
   }
 }
 
@@ -627,6 +673,7 @@ async function initPage() {
           currentProject.value = res.data
           viewMode.value = 'detail'
           await loadDocuments()
+          await loadCurrentAdvisorInfo()
           return
         }
       } catch {}
@@ -658,6 +705,7 @@ async function resolveStudentProject() {
     }
   } finally {
     isLoading.value = false
+    loadMissingChecklist()
   }
 }
 
@@ -696,12 +744,14 @@ async function loadInitialProjectForStaff() {
     documents.value = []
   } finally {
     isLoading.value = false
+    loadMissingChecklist()
   }
 }
 
 async function selectProject(project) {
   if (!project || !project.id) return
   currentProject.value = project
+  viewMode.value = 'detail'
   pageNumber.value = 1
   errorMessage.value = ''
   await loadDocuments()
@@ -758,6 +808,7 @@ async function loadDocuments() {
     totalPages.value = 0
   } finally {
     isLoading.value = false
+    loadMissingChecklist()
   }
 }
 
@@ -1639,6 +1690,110 @@ onMounted(() => {
               </template>
               <div v-else class="tecnm-text-muted" style="font-size: 0.82rem;">
                 <em>La asignación de asesor se habilitará al contar con la Carta de Aceptación en el expediente.</em>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel de Control del Asesor: Comprobación de Documentos Faltantes -->
+      <div
+        v-if="canViewAdvisorMissingChecklist && currentProject && (missingChecklist || isLoadingMissingChecklist)"
+        id="advisorMissingDocumentsPanel"
+        class="tecnm-card tecnm-mb-3"
+        style="border-left: 5px solid var(--tecnm-blue-primary, #1b396a); background: #ffffff; box-shadow: 0 2px 6px rgba(0,0,0,0.06); margin-bottom: 1.25rem;"
+      >
+        <div class="tecnm-card-header" style="background: #f8fafc; padding: 0.75rem 1.25rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="var(--tecnm-blue-primary, #1b396a)" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h3.75M9 15h3.75M9 18h3.75m3 .75H18a2.25 2.25 0 0 0 2.25-2.25V6.108c0-1.135-.845-2.098-1.976-2.192a48.424 48.424 0 0 0-1.123-.08m-5.801 0c-.065.21-.1.433-.1.664 0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75 2.25 2.25 0 0 0-.1-.664m-5.8 0A2.251 2.251 0 0 1 13.5 2.25H15c1.012 0 1.867.668 2.15 1.586m-5.8 0c-.376.023-.75.05-1.124.08C9.095 4.01 8.25 4.973 8.25 6.108V8.25m0 0H4.875c-.621 0-1.125.504-1.125 1.125v11.25c0 .621.504 1.125 1.125 1.125h9.75c.621 0 1.125-.504 1.125-1.125V9.375c0-.621-.504-1.125-1.125-1.125H8.25ZM6.75 12h.008v.008H6.75V12Zm0 3h.008v.008H6.75V15Zm0 3h.008v.008H6.75V18Z" />
+            </svg>
+            <h3 class="tecnm-card-title" style="font-size: 0.95rem; margin: 0; font-weight: 700; color: #1e293b;">
+              Control de Asesor: Documentos Pendientes de Subir por el Alumno
+            </h3>
+          </div>
+          <div v-if="missingChecklist" style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+            <span v-if="missingChecklist.isComplete" class="tecnm-badge tecnm-badge-success" style="font-weight: 600;">
+              ✓ Expediente Completo ({{ missingChecklist.totalUploaded }}/{{ missingChecklist.totalRequired }})
+            </span>
+            <span v-else class="tecnm-badge tecnm-badge-warning" style="font-weight: 600;">
+              {{ missingChecklist.totalMissing }} {{ missingChecklist.totalMissing === 1 ? 'documento pendiente' : 'documentos pendientes' }} por subir
+            </span>
+            <button
+              type="button"
+              class="tecnm-btn tecnm-btn-ghost tecnm-btn-sm"
+              style="padding: 0.2rem 0.5rem; font-size: 0.78rem;"
+              title="Recargar comprobación"
+              :disabled="isLoadingMissingChecklist"
+              @click="loadMissingChecklist"
+            >
+              🔄 Actualizar
+            </button>
+          </div>
+        </div>
+
+        <div class="tecnm-card-body" style="padding: 1rem 1.25rem;">
+          <div v-if="isLoadingMissingChecklist" class="tecnm-text-muted" style="padding: 0.5rem; font-size: 0.88rem;">
+            Verificando documentos obligatorios del alumno...
+          </div>
+          <div v-else-if="missingChecklistError" class="tecnm-text-danger" style="font-size: 0.88rem;">
+            {{ missingChecklistError }}
+          </div>
+          <div v-else-if="missingChecklist">
+            <!-- Caso 1: Expediente completo -->
+            <div
+              v-if="missingChecklist.isComplete"
+              style="display: flex; align-items: center; gap: 0.75rem; background: #ecfdf5; border: 1px solid #a7f3d0; border-radius: 8px; padding: 0.75rem 1rem;"
+            >
+              <span style="font-size: 1.25rem;">🎉</span>
+              <div>
+                <strong style="color: #065f46; font-size: 0.9rem;">El alumno ha subido todos los documentos requeridos de su residencia.</strong>
+                <p style="margin: 0; font-size: 0.8rem; color: #047857;">
+                  Todos los formatos de seguimiento y entregables oficiales se encuentran registrados y al corriente en el expediente digital.
+                </p>
+              </div>
+            </div>
+
+            <!-- Caso 2: Documentos faltantes por subir -->
+            <div v-else>
+              <div style="font-size: 0.85rem; color: #475569; margin-bottom: 0.75rem;">
+                Los siguientes documentos obligatorios <strong>aún NO han sido entregados</strong> o requieren corrección por parte del alumno:
+              </div>
+
+              <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 0.75rem;">
+                <div
+                  v-for="item in missingChecklist.missingDocuments"
+                  :key="item.documentType"
+                  style="border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem; background: #fafbfc; display: flex; flex-direction: column; justify-content: space-between; gap: 0.5rem;"
+                  :style="item.isOverdue ? 'border-color: #fca5a5; background: #fff5f5;' : ''"
+                >
+                  <div>
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.25rem;">
+                      <span style="font-weight: 600; font-size: 0.88rem; color: #1e293b;">
+                        {{ item.name }}
+                      </span>
+                      <span
+                        class="tecnm-badge"
+                        :class="item.isOverdue ? 'tecnm-badge-danger' : 'tecnm-badge-warning'"
+                        style="font-size: 0.7rem; white-space: nowrap;"
+                      >
+                        {{ item.isOverdue ? 'Vencido' : 'Faltante' }}
+                      </span>
+                    </div>
+
+                    <p style="margin: 0; font-size: 0.78rem; color: #64748b; line-height: 1.35;">
+                      {{ item.statusNote }}
+                    </p>
+
+                    <div v-if="item.prerequisite" style="margin-top: 0.35rem; font-size: 0.72rem; color: #94a3b8;">
+                      <em>Pre-requisito: {{ item.prerequisite }}</em>
+                    </div>
+                  </div>
+
+                  <div v-if="item.deadline" style="font-size: 0.75rem; color: #b91c1c; font-weight: 500; margin-top: 0.25rem;">
+                    Fecha límite: {{ new Date(item.deadline).toLocaleDateString('es-MX') }}
+                  </div>
+                </div>
               </div>
             </div>
           </div>

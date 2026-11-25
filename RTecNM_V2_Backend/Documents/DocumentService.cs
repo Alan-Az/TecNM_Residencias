@@ -342,9 +342,18 @@ public class DocumentService : IDocumentService
         {
             "carta_presentacion" => "Carta de Presentación",
             "carta_aceptacion" => "Carta de Aceptación",
+            "carta_aprobacion" => "Carta de Aceptación",
             "carta_liberacion" => "Carta de Liberación de Residencias",
             "solicitud" => "Solicitud de Residencia Profesional",
             "anteproyecto" => "Documento de Anteproyecto",
+            "dictamen" => "Dictamen de Aprobación",
+            "constancia_acreditacion" => "Constancia de Acreditación (InnovaTec / HackaTec)",
+            "formato_29" => "Formato 29 (Primer Seguimiento / Parcial 1)",
+            "formato_29v2" => "Formato 29 (Segundo Seguimiento / Parcial 2)",
+            "formato_30" => "Formato 30 (Evaluación Final)",
+            "carta_terminacion" => "Carta de Terminación",
+            "proyecto_final" => "Reporte de Proyecto Final",
+            "libranza" => "Oficio de Liberación de Residencia",
             _ => "Documento Oficial de Residencia"
         };
     }
@@ -870,5 +879,165 @@ private static DocumentResponseDto MapToDto(Document doc)
         using var ms = new MemoryStream();
         MiniExcel.SaveAs(ms, sheets);
         return Result<byte[]>.Success(ms.ToArray());
+    }
+
+    public async Task<Result<MissingDocumentsChecklistDto>> GetMissingDocumentsChecklistAsync(long projectId)
+    {
+        var project = await _context.Projects
+            .Include(p => p.Student)
+            .Include(p => p.Advisor)
+            .Include(p => p.Company)
+            .FirstOrDefaultAsync(p => p.Id == projectId && p.IsActive);
+
+        if (project == null)
+            return Result<MissingDocumentsChecklistDto>.Failure("Anteproyecto no encontrado o inactivo.", 404);
+
+        var resolvedAdvisorId = project.AdvisorId ?? project.Student?.AdvisorId;
+
+        // Validación estricta de alcance según roles:
+        if (_currentUser.Role == UserRole.Advisor)
+        {
+            var adv = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == _currentUser.UserId && a.IsActive);
+            if (adv == null || resolvedAdvisorId != adv.Id)
+            {
+                return Result<MissingDocumentsChecklistDto>.Failure("No autorizado: Solo puedes consultar los documentos faltantes de tus propios alumnos asesorados.", 403);
+            }
+        }
+        else if (_currentUser.Role == UserRole.CareerHead)
+        {
+            var adv = await _context.Advisors.FirstOrDefaultAsync(a => a.UserId == _currentUser.UserId && a.IsActive);
+            if (adv == null || resolvedAdvisorId != adv.Id)
+            {
+                return Result<MissingDocumentsChecklistDto>.Failure("Como Jefe de Carrera, esta vista de documentos faltantes de asesor solo está disponible para tus propios alumnos asesorados.", 403);
+            }
+        }
+        else if (!(_currentUser.Role == UserRole.Admin || _currentUser.Role == UserRole.Academic || _currentUser.Role == UserRole.Director || _currentUser.Role == UserRole.Coordinator))
+        {
+            return Result<MissingDocumentsChecklistDto>.Failure("No cuenta con permisos para consultar la lista de documentos de este asesorado.", 403);
+        }
+
+        var student = project.Student;
+        var activeDocs = await _context.Documents
+            .Where(d => d.ProjectId == projectId && d.IsActive)
+            .OrderByDescending(d => d.Id)
+            .ToListAsync();
+
+        var isAccreditation = project.ProjectType is "acreditacion_innovatec" or "acreditacion_hackatec";
+
+        var requiredSpecs = isAccreditation
+            ? new List<(string Type, string Name, string Stage, string? Prerequisite)>
+            {
+                (DocumentType.ConstanciaAcreditacion, "Constancia de Acreditación (InnovaTec / HackaTec)", "Inicio", null),
+                (DocumentType.Dictamen, "Dictamen de Aprobación", "Dictamen", "Constancia de acreditación"),
+                (DocumentType.Libranza, "Oficio de Liberación de Residencia", "Final", "Dictamen aprobado")
+            }
+            : new List<(string Type, string Name, string Stage, string? Prerequisite)>
+            {
+                (DocumentType.CartaAceptacion, "Carta de Aceptación Oficial de la Empresa", "Inicio", null),
+                (DocumentType.Formato29, "Formato 29 (Primer Seguimiento / Parcial 1)", "Seguimiento", "Carta de Aceptación registrada"),
+                (DocumentType.Formato29V2, "Formato 29 (Segundo Seguimiento / Parcial 2)", "Seguimiento", "Formato 29 previo aprobado"),
+                (DocumentType.Formato30, "Formato 30 (Evaluación Final de Residencia)", "Cierre", "Formatos de seguimiento aprobados"),
+                (DocumentType.CartaTerminacion, "Carta de Terminación emitida por la Empresa", "Cierre", "Formatos de seguimiento concluidos"),
+                (DocumentType.ProyectoFinal, "Reporte de Proyecto Final de Residencia", "Cierre", "Formatos de seguimiento y Carta de Terminación")
+            };
+
+        var uploadedSummaries = new List<UploadedDocumentSummaryDto>();
+        var missingItems = new List<MissingDocumentItemDto>();
+
+        var docGrouped = activeDocs
+            .GroupBy(d => d.DocumentType.ToLowerInvariant())
+            .ToDictionary(g => g.Key, g => g.OrderByDescending(x => x.Id).First());
+
+        foreach (var doc in activeDocs)
+        {
+            uploadedSummaries.Add(new UploadedDocumentSummaryDto
+            {
+                Id = doc.Id,
+                DocumentType = doc.DocumentType,
+                Name = GetFriendlyDocumentTypeName(doc.DocumentType),
+                FileName = doc.FileName,
+                Status = doc.Status,
+                RejectionReason = doc.RejectionReason,
+                UploadedAt = doc.UploadedAt
+            });
+        }
+
+        foreach (var spec in requiredSpecs)
+        {
+            var key = spec.Type.ToLowerInvariant();
+            bool isUploaded = false;
+            Document? matchedDoc = null;
+
+            if (key == DocumentType.CartaAceptacion.ToLowerInvariant())
+            {
+                if (docGrouped.TryGetValue(DocumentType.CartaAceptacion.ToLowerInvariant(), out matchedDoc) ||
+                    docGrouped.TryGetValue(DocumentType.CartaAprobacion.ToLowerInvariant(), out matchedDoc))
+                {
+                    isUploaded = true;
+                }
+            }
+            else if (docGrouped.TryGetValue(key, out matchedDoc))
+            {
+                isUploaded = true;
+            }
+
+            bool isRejected = matchedDoc != null && string.Equals(matchedDoc.Status, DocumentStatus.Rejected, StringComparison.OrdinalIgnoreCase);
+
+            if (!isUploaded || isRejected)
+            {
+                bool isOverdue = false;
+                DateTime? deadline = null;
+
+                if (key == DocumentType.Formato29.ToLowerInvariant() && student?.Formato29Deadline.HasValue == true)
+                {
+                    deadline = student.Formato29Deadline.Value;
+                    if (DateTime.UtcNow > deadline.Value) isOverdue = true;
+                }
+                else if ((key == DocumentType.Formato29V2.ToLowerInvariant() || key == DocumentType.Formato30.ToLowerInvariant()) && student?.Formato30Deadline.HasValue == true)
+                {
+                    deadline = student.Formato30Deadline.Value;
+                    if (DateTime.UtcNow > deadline.Value) isOverdue = true;
+                }
+
+                string? statusNote = isRejected 
+                    ? $"Documento devuelto/rechazado: {matchedDoc?.RejectionReason ?? "Requiere corrección"}"
+                    : (isOverdue ? "Fecha límite de entrega vencida" : "Aún no ha sido subido por el alumno");
+
+                missingItems.Add(new MissingDocumentItemDto
+                {
+                    DocumentType = spec.Type,
+                    Name = spec.Name,
+                    Stage = spec.Stage,
+                    IsOverdue = isOverdue,
+                    Deadline = deadline,
+                    Prerequisite = spec.Prerequisite,
+                    StatusNote = statusNote
+                });
+            }
+        }
+
+        var career = student != null ? await _context.Careers.FirstOrDefaultAsync(c => c.Id == student.CareerId) : null;
+
+        var resultDto = new MissingDocumentsChecklistDto
+        {
+            ProjectId = project.Id,
+            StudentId = project.StudentId,
+            StudentName = $"{student?.FirstName} {student?.LastName} {student?.LastName2}".Trim(),
+            StudentControlNumber = student?.ControlNumber ?? string.Empty,
+            CareerId = student?.CareerId ?? 0,
+            CareerName = career?.Name ?? "Carrera",
+            AdvisorId = resolvedAdvisorId,
+            AdvisorName = project.Advisor?.FullName ?? student?.Advisor?.FullName,
+            IsAccreditation = isAccreditation,
+            ProjectType = project.ProjectType ?? "ordinario",
+            TotalRequired = requiredSpecs.Count,
+            TotalUploaded = requiredSpecs.Count - missingItems.Count,
+            TotalMissing = missingItems.Count,
+            IsComplete = missingItems.Count == 0,
+            MissingDocuments = missingItems,
+            UploadedDocuments = uploadedSummaries
+        };
+
+        return Result<MissingDocumentsChecklistDto>.Success(resultDto);
     }
 }

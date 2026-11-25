@@ -332,4 +332,18 @@ public class DocumentsController : ControllerBase
         var fileName = $"expedientes_digitales_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx";
         return File(result.Data!, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
     }
+
+    /// <summary>
+    /// Consulta el checklist de documentos faltantes y entregados para un residente (vista de asesor)
+    /// </summary>
+    [HttpGet("project/{projectId:long}/missing-checklist")]
+    [Authorize(Roles = "admin,departmenthead,academic,academico,director,jefecarrera,careerhead,coordinadora,coordinator,advisor")]
+    public async Task<IActionResult> GetMissingDocumentsChecklist(long projectId)
+    {
+        var result = await _documentService.GetMissingDocumentsChecklistAsync(projectId);
+        if (!result.IsSuccess)
+            return StatusCode(result.StatusCode ?? 400, new { message = result.ErrorMessage });
+
+        return Ok(result.Data);
+    }
 }
